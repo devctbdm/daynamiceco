@@ -1,0 +1,54 @@
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
+
+export const notificationEntries = pgTable(
+  "notification_entries",
+  {
+    id: text("id").primaryKey(),
+    category: text("category").notNull().default("system"),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    link: text("link").notNull().default(""),
+    read: boolean("read").notNull().default(false),
+    orderId: text("order_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("notification_entries_created_at_idx").on(table.createdAt),
+    index("notification_entries_read_idx").on(table.read),
+    check(
+      "notification_entries_category_check",
+      sql`${table.category} in ('order', 'delivery', 'rider', 'payment', 'system')`,
+    ),
+    check(
+      "notification_entries_title_check",
+      sql`length(trim(${table.title})) > 0`,
+    ),
+    check(
+      "notification_entries_description_check",
+      sql`length(trim(${table.description})) > 0`,
+    ),
+  ],
+);
+
+export function serializeNotification(row) {
+  if (!row) return null;
+  const { id, orderId, ...notification } = row;
+  return {
+    ...notification,
+    order: orderId,
+    _id: id,
+  };
+}

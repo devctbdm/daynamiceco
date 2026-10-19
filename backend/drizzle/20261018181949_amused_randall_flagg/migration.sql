@@ -1,0 +1,20 @@
+CREATE TABLE "sms_setting_entries" (
+	"id" text PRIMARY KEY DEFAULT 'default',
+	"provider" text DEFAULT 'bulksmsbd' NOT NULL,
+	"api_key" text DEFAULT '' NOT NULL,
+	"gateway_url" text DEFAULT '' NOT NULL,
+	"gateway_api_key" text DEFAULT '' NOT NULL,
+	"gateway_api_key_variable" text DEFAULT 'api_key' NOT NULL,
+	"gateway_sms_type" text DEFAULT 'url' NOT NULL,
+	"sender_id" text DEFAULT '' NOT NULL,
+	"signature" text DEFAULT '' NOT NULL,
+	"enabled" boolean DEFAULT false NOT NULL,
+	"two_factor_enabled" boolean DEFAULT false NOT NULL,
+	"otp_expiry_seconds" integer DEFAULT 60 NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "sms_setting_entries_singleton_check" CHECK ("id" = 'default'),
+	CONSTRAINT "sms_setting_entries_provider_check" CHECK ("provider" in ('bulksmsbd', 'rtcom')),
+	CONSTRAINT "sms_setting_entries_gateway_sms_type_check" CHECK ("gateway_sms_type" = 'url'),
+	CONSTRAINT "sms_setting_entries_otp_expiry_check" CHECK ("otp_expiry_seconds" between 15 and 900)
+);

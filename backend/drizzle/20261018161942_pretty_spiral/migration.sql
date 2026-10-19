@@ -1,0 +1,3 @@
+ALTER TABLE "customer_orders" ADD CONSTRAINT "customer_orders_items_array_check" CHECK (jsonb_typeof("items") = 'array');--> statement-breakpoint
+ALTER TABLE "customer_orders" ADD CONSTRAINT "customer_orders_order_status_check" CHECK ("order_status" in ('pending', 'processing', 'confirmed', 'send_courier', 'cancelled'));--> statement-breakpoint
+ALTER TABLE "customer_orders" ADD CONSTRAINT "customer_orders_payment_status_check" CHECK ("payment"->>'status' in ('pending', 'paid', 'failed', 'cancelled'));

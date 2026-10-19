@@ -1,0 +1,22 @@
+CREATE TABLE "store_setting_entries" (
+	"id" text PRIMARY KEY DEFAULT 'default',
+	"store_name" text DEFAULT '' NOT NULL,
+	"store_url" text DEFAULT '' NOT NULL,
+	"email" text DEFAULT '' NOT NULL,
+	"phone" text DEFAULT '' NOT NULL,
+	"description" text DEFAULT '' NOT NULL,
+	"logo_type" text DEFAULT 'text' NOT NULL,
+	"logo_text" text DEFAULT '' NOT NULL,
+	"logo_sub_text" text DEFAULT '' NOT NULL,
+	"logo_icon_url" text DEFAULT '' NOT NULL,
+	"logo_url" text DEFAULT '' NOT NULL,
+	"currency" text DEFAULT 'usd' NOT NULL,
+	"timezone" text DEFAULT 'pt' NOT NULL,
+	"address" text DEFAULT '' NOT NULL,
+	"meta_title" text DEFAULT '' NOT NULL,
+	"meta_description" text DEFAULT '' NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "store_settings_singleton_check" CHECK ("id" = 'default'),
+	CONSTRAINT "store_settings_logo_type_check" CHECK ("logo_type" in ('text', 'image'))
+);
