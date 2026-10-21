@@ -3,6 +3,7 @@
 // Uses the built-in Next.js fetch() with caching/revalidation.
 import { cache } from 'react';
 import { getApiBase } from './apiConfig';
+import { SERVICE_FINDER_CACHE_TAG } from './cacheTags';
 
 const API_BASE = getApiBase();
 
@@ -10,10 +11,14 @@ const API_BASE = getApiBase();
 // revalidation instead of disabling cache entirely.
 const REVALIDATE_SECONDS = 60;
 
-async function getJson<T = any>(path: string, revalidate = REVALIDATE_SECONDS) {
+async function getJson<T = any>(
+  path: string,
+  revalidate = REVALIDATE_SECONDS,
+  tags: string[] = []
+) {
   try {
     const res = await fetch(`${API_BASE}${path}`, {
-      next: { revalidate },
+      next: { revalidate, ...(tags.length ? { tags } : {}) },
     });
     if (!res.ok) return null;
     return (await res.json()) as T;
@@ -59,6 +64,27 @@ export const fetchPhysicalStoreBanner = cache(async () => {
 export const fetchPhysicalStores = cache(async () => {
   const data = await getJson<{ stores: any[] }>('/physical-stores?active=true');
   return data?.stores || [];
+});
+
+// Home page service finder cards (icon + title + subtitle), ordered.
+// Tagged so /admin/service-finder can purge it on demand after an edit.
+export const fetchServiceFinderItems = cache(async () => {
+  const data = await getJson<{ items: any[] }>(
+    '/service-finders?active=true',
+    undefined,
+    [SERVICE_FINDER_CACHE_TAG]
+  );
+  return data?.items || [];
+});
+
+// Section-level switch for the homepage service finder block.
+export const fetchServiceFinderSetting = cache(async () => {
+  const data = await getJson<{ setting: { enabled?: boolean } }>(
+    '/service-finders/setting',
+    undefined,
+    [SERVICE_FINDER_CACHE_TAG]
+  );
+  return data?.setting ?? null;
 });
 
 // Active hero/ad sliders for the home page.

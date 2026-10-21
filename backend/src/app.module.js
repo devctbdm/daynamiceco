@@ -32,6 +32,7 @@ import TeamMembersModule from "./team-members/team-members.module.js";
 import SlidersModule from "./sliders/sliders.module.js";
 import SmsSettingsModule from "./sms-settings/sms-settings.module.js";
 import SavedBuildsModule from "./saved-builds/saved-builds.module.js";
+import ServiceFindersModule from "./service-finders/service-finders.module.js";
 import NotificationsModule from "./notifications/notifications.module.js";
 
 class HealthController {
@@ -99,6 +100,7 @@ Module({
     SlidersModule,
     SmsSettingsModule,
     SavedBuildsModule,
+    ServiceFindersModule,
     NotificationsModule,
   ],
   controllers: [HealthController],

@@ -45,6 +45,11 @@ export class CategoriesController {
     };
   }
 
+  async reorder(body) {
+    await this.categoriesService.reorder(body?.orders);
+    return { success: true, message: "Categories reordered" };
+  }
+
   async update(id, body, request) {
     const category = await this.categoriesService.update(
       id,
@@ -58,11 +63,6 @@ export class CategoriesController {
   async delete(id) {
     if (!(await this.categoriesService.delete(id))) throw categoryNotFound();
     return { success: true, message: "Category deleted successfully" };
-  }
-
-  async reorder(body) {
-    await this.categoriesService.reorder(body?.orders);
-    return { success: true, message: "Categories reordered" };
   }
 }
 

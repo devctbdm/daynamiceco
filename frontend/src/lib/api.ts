@@ -1079,6 +1079,28 @@ export type DashboardStats = {
   }[];
   salesByCategory: { name: string; value: number }[];
   monthlyRevenue: { label: string; value: number }[];
+  /** Count of orders awaiting processing. */
+  pendingOrders: number;
+  /** Active products at or below the low-stock threshold. */
+  lowStock: {
+    _id: string;
+    name: string;
+    slug: string;
+    stock: number;
+    sku: string;
+    image: string;
+  }[];
+  /** Latest mutating admin actions (logins, creates, updates, deletes). */
+  recentActivity: {
+    _id: string;
+    action: string;
+    eventType: string;
+    actorName: string;
+    actorRole: string | null;
+    target: string;
+    statusCode: number | null;
+    createdAt: string | null;
+  }[];
 };
 
 export const dashboardApi = {
@@ -1973,5 +1995,83 @@ export const permissionGroupApi = {
     apiFetch<{ success: boolean; message: string }>(
       `/permission-groups/${id}`,
       { method: 'DELETE' }
+    ),
+};
+
+// ---------------------------------------------------------------------------
+// Home page "service finder" cards (managed from /admin/service-finder)
+// ---------------------------------------------------------------------------
+export type ServiceFinderItem = {
+  _id: string;
+  title: string;
+  subtitle: string;
+  /** Icon key resolved by `serviceIcon()` (see lib/serviceIcons.ts). */
+  icon: string;
+  /** Optional link target; empty renders a non-clickable card. */
+  href: string;
+  active: boolean;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ServiceFinderForm = {
+  title: string;
+  subtitle: string;
+  icon: string;
+  href: string;
+  active: boolean;
+  sortOrder?: number;
+};
+
+/** Section-level visibility for the whole homepage service finder block. */
+export type ServiceFinderSetting = {
+  enabled: boolean;
+};
+
+export const serviceFinderApi = {
+  /** Section-level switch: hides the whole block on the homepage. */
+  getSetting: () =>
+    apiFetch<{ success: boolean; setting: ServiceFinderSetting }>(
+      '/service-finders/setting'
+    ),
+
+  updateSetting: (data: ServiceFinderSetting) =>
+    apiFetch<{ success: boolean; setting: ServiceFinderSetting }>(
+      '/service-finders/setting',
+      { method: 'PUT', body: data }
+    ),
+
+  getAll: (params?: { active?: boolean }) =>
+    apiFetch<{ success: boolean; items: ServiceFinderItem[] }>(
+      '/service-finders',
+      {
+        params: params
+          ? { active: params.active ? 'true' : undefined }
+          : undefined,
+      }
+    ),
+
+  create: (data: ServiceFinderForm) =>
+    apiFetch<{ success: boolean; item: ServiceFinderItem }>(
+      '/service-finders',
+      { method: 'POST', body: data }
+    ),
+
+  update: (id: string, data: Partial<ServiceFinderForm>) =>
+    apiFetch<{ success: boolean; item: ServiceFinderItem }>(
+      `/service-finders/${id}`,
+      { method: 'PUT', body: data }
+    ),
+
+  delete: (id: string) =>
+    apiFetch<{ success: boolean; message: string }>(`/service-finders/${id}`, {
+      method: 'DELETE',
+    }),
+
+  reorder: (orders: { id: string; sortOrder: number }[]) =>
+    apiFetch<{ success: boolean; message: string }>(
+      '/service-finders/reorder',
+      { method: 'PUT', body: { orders } }
     ),
 };

@@ -1,6 +1,7 @@
 'use client';
 
 import HomeRichTextEditor from '@/components/HomeRichTextEditor';
+import { SiteHeader } from '@/components/site-header';
 import { homeContentApi } from '@/lib/api';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -38,14 +39,19 @@ const Page = () => {
   }, []);
 
   return (
-    <div className="container mx-auto py-6">
-      <h1 className="text-3xl font-bold mb-6">Home Page Content Management</h1>
-      <HomeRichTextEditor
-        initialContent={savedContent}
-        initialEnabled={savedEnabled}
-        onSave={handleSave}
-      />
-    </div>
+    <>
+      <SiteHeader />
+      <div className="container mx-auto py-6">
+        <h1 className="text-3xl font-bold mb-6">
+          Home Page Content Management
+        </h1>
+        <HomeRichTextEditor
+          initialContent={savedContent}
+          initialEnabled={savedEnabled}
+          onSave={handleSave}
+        />
+      </div>
+    </>
   );
 };
 

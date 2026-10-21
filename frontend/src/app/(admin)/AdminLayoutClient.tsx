@@ -9,10 +9,11 @@ import {
   canAccessRoute,
 } from '@/lib/adminPermissions';
 import { useAuth } from '@/store';
+import { ADMIN_SNAPSHOT_ROLES } from '@/store/slices/auth.slice';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useLayoutEffect } from 'react';
 
-const ADMIN_ROLES = ['admin', 'super_admin', 'manager'];
+const ADMIN_ROLES = ADMIN_SNAPSHOT_ROLES;
 
 // Skeleton shell shown while the session is being restored, so the admin
 // area loads with a layout-accurate placeholder instead of a spinner.
@@ -65,8 +66,11 @@ export default function AdminLayoutClient({
   }, [pathname, brandName]);
 
   useEffect(() => {
-    if (!user) fetchUser();
-  }, [user, fetchUser]);
+    // Always revalidate the session in the background. When the store was
+    // hydrated from the session snapshot this only refreshes `user`; when it
+    // is a genuinely new session it performs the `/auth/me` bootstrap.
+    fetchUser();
+  }, [fetchUser]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -77,7 +81,10 @@ export default function AdminLayoutClient({
     }
   }, [isLoading, user, router]);
 
-  if (isLoading || !user || !ADMIN_ROLES.includes(user.role)) {
+  // The skeleton is only for sessions we have not resolved (or restored from
+  // the snapshot) yet. While a validated user is present — even when a
+  // background revalidation is in flight — the real page stays mounted.
+  if (!user || !ADMIN_ROLES.includes(user.role)) {
     return <AdminSkeleton />;
   }
 

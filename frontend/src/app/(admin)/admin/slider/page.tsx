@@ -209,6 +209,67 @@ function SliderRow({
   );
 }
 
+function SliderRowSkeleton({
+  type,
+  withReorder = false,
+}: {
+  type: SliderType;
+  withReorder?: boolean;
+}) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+        <Skeleton
+          className={`w-full shrink-0 rounded-md sm:w-48 ${
+            type === 'hero' ? 'aspect-[1.96/1]' : 'aspect-[5/4]'
+          }`}
+        />
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Skeleton className="h-5 w-28" />
+            <Skeleton className="h-5 w-16 rounded-full" />
+          </div>
+          <Skeleton className="h-4 w-3/5" />
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-5 w-9 rounded-full" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+        </div>
+        {withReorder && (
+          <div className="flex items-center gap-1">
+            <Skeleton className="size-8 rounded-md" />
+            <Skeleton className="size-8 rounded-md" />
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <Skeleton className="size-8 rounded-md" />
+          <Skeleton className="size-8 rounded-md" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SliderSettingsSkeleton() {
+  return (
+    <>
+      {[
+        { label: 'Main slider', description: 'w-44', control: 'h-5 w-9 rounded-full' },
+        { label: 'Auto-slide', description: 'w-56', control: 'h-5 w-9 rounded-full' },
+        { label: 'Slide interval', description: 'w-28', control: 'h-8 w-36' },
+      ].map((row) => (
+        <div key={row.label} className="flex items-center justify-between gap-4">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className={`h-3.5 ${row.description}`} />
+          </div>
+          <Skeleton className={row.control} />
+        </div>
+      ))}
+    </>
+  );
+}
+
 export default function SliderPage() {
   const [sliders, setSliders] = useState<Slider[]>([]);
   const [setting, setSetting] = useState<SliderSetting>(DEFAULT_SETTING);
@@ -455,72 +516,77 @@ export default function SliderPage() {
           </Alert>
         )}
 
-        <Card>
+        <Card aria-busy={loading}>
           <CardHeader>
             <CardTitle>Slider settings</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-5 sm:grid-cols-3">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <Label htmlFor="main-slider-toggle">Main slider</Label>
-                <p className="text-sm text-muted-foreground">
-                  Show enabled slides on the homepage.
-                </p>
+            {loading ? (
+              <SliderSettingsSkeleton />
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <Label htmlFor="main-slider-toggle">Main slider</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Show enabled slides on the homepage.
+                  </p>
+                </div>
+                <Switch
+                  id="main-slider-toggle"
+                  checked={setting.enabled}
+                  disabled={savingSetting || loading}
+                  onCheckedChange={(enabled) => void updateSetting({ enabled })}
+                />
               </div>
-              <Switch
-                id="main-slider-toggle"
-                checked={setting.enabled}
-                disabled={savingSetting || loading}
-                onCheckedChange={(enabled) => void updateSetting({ enabled })}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <Label htmlFor="auto-slide-toggle">Auto-slide</Label>
-                <p className="text-sm text-muted-foreground">
-                  Manual navigation remains available when off.
-                </p>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <Label htmlFor="auto-slide-toggle">Auto-slide</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Manual navigation remains available when off.
+                  </p>
+                </div>
+                <Switch
+                  id="auto-slide-toggle"
+                  checked={setting.autoSlide}
+                  disabled={savingSetting || loading}
+                  onCheckedChange={(autoSlide) =>
+                    void updateSetting({ autoSlide })
+                  }
+                />
               </div>
-              <Switch
-                id="auto-slide-toggle"
-                checked={setting.autoSlide}
-                disabled={savingSetting || loading}
-                onCheckedChange={(autoSlide) =>
-                  void updateSetting({ autoSlide })
-                }
-              />
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <Label htmlFor="slide-interval">Slide interval</Label>
-                <p className="text-sm text-muted-foreground">
-                  Choose 3–10 seconds.
-                </p>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <Label htmlFor="slide-interval">Slide interval</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Choose 3–10 seconds.
+                  </p>
+                </div>
+                <Select
+                  value={String(setting.interval)}
+                  disabled={savingSetting || loading}
+                  onValueChange={(value) =>
+                    value && void updateSetting({ interval: Number(value) })
+                  }
+                >
+                  <SelectTrigger id="slide-interval" className="w-36">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 8 }, (_, index) => index + 3).map(
+                      (seconds) => (
+                        <SelectItem key={seconds} value={String(seconds)}>
+                          {seconds} seconds
+                        </SelectItem>
+                      )
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
-              <Select
-                value={String(setting.interval)}
-                disabled={savingSetting || loading}
-                onValueChange={(value) =>
-                  value && void updateSetting({ interval: Number(value) })
-                }
-              >
-                <SelectTrigger id="slide-interval" className="w-36">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: 8 }, (_, index) => index + 3).map(
-                    (seconds) => (
-                      <SelectItem key={seconds} value={String(seconds)}>
-                        {seconds} seconds
-                      </SelectItem>
-                    )
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+              </>
+            )}
           </CardContent>
         </Card>
-
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -534,9 +600,12 @@ export default function SliderPage() {
             </Button>
           </div>
           {loading ? (
-            <div className="space-y-3">
-              {[1, 2].map((item) => (
-                <Skeleton key={item} className="h-32 w-full" />
+            <div className="space-y-3" aria-busy="true">
+              <span className="sr-only" role="status">
+                Loading main slides…
+              </span>
+              {[0, 1].map((item) => (
+                <SliderRowSkeleton key={item} type="hero" withReorder />
               ))}
             </div>
           ) : heroSlides.length ? (
@@ -567,7 +636,7 @@ export default function SliderPage() {
                 .filter((slider) => slider.type === type)
                 .sort((a, b) => a.sortOrder - b.sortOrder);
               return (
-                <Card key={type}>
+                <Card key={type} aria-busy={loading}>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0">
                     <div>
                       <CardTitle>{TYPE_LABEL[type]}</CardTitle>
@@ -588,7 +657,12 @@ export default function SliderPage() {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {loading ? (
-                      <Skeleton className="h-28 w-full" />
+                      <div aria-busy="true">
+                        <span className="sr-only" role="status">
+                          Loading {TYPE_LABEL[type].toLowerCase()}…
+                        </span>
+                        <SliderRowSkeleton type={type} />
+                      </div>
                     ) : items.length ? (
                       renderRows(items)
                     ) : (

@@ -44,6 +44,11 @@ class SlidersController {
     };
   }
 
+  async reorder(body) {
+    await this.slidersService.reorder(body?.orders);
+    return { success: true, message: "Slides reordered" };
+  }
+
   async update(id, request, body) {
     const slider = await this.slidersService.update(
       id,
@@ -57,11 +62,6 @@ class SlidersController {
   async delete(id) {
     if (!(await this.slidersService.delete(id))) throw sliderNotFound();
     return { success: true, message: "Slide deleted" };
-  }
-
-  async reorder(body) {
-    await this.slidersService.reorder(body?.orders);
-    return { success: true, message: "Slides reordered" };
   }
 
   async updateSetting(body) {

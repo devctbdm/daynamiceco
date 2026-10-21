@@ -26,6 +26,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import { Skeleton } from '@/components/ui/skeleton';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import {
   Dialog,
@@ -91,11 +92,81 @@ const emptySetting: SettingForm = {
   bannerUrl: '',
 };
 
+/** Mirrors a branch row while the list first loads (no layout shift). */
+function StoreRowSkeleton() {
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-5 w-36" />
+          <Skeleton className="h-5 w-16 rounded-full" />
+        </div>
+        <Skeleton className="h-4 w-3/4" />
+        <Skeleton className="h-4 w-1/2" />
+      </div>
+      <div className="flex items-center gap-0.5">
+        <Skeleton className="size-9 rounded-md" />
+        <Skeleton className="size-9 rounded-md" />
+        <Skeleton className="mx-2 h-5 w-9 rounded-full" />
+        <Skeleton className="size-9 rounded-md" />
+        <Skeleton className="size-9 rounded-md" />
+      </div>
+    </div>
+  );
+}
+
+/** Mirrors the banner form body: fields, preview card, image row, save button. */
+function BannerFormSkeleton() {
+  return (
+    <div className="space-y-5" aria-busy="true">
+      <span className="sr-only" role="status">
+        Loading banner settings…
+      </span>
+      <div className="grid gap-4 md:grid-cols-2">
+        {[0, 1, 2, 3].map((key) => (
+          <div key={key} className="space-y-2">
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-9 w-full rounded-md" />
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+        <div className="flex items-center gap-2 pb-2.5">
+          <Skeleton className="h-5 w-9 rounded-full" />
+          <Skeleton className="h-4 w-28" />
+        </div>
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-9 w-24 rounded-md" />
+        </div>
+      </div>
+      <div className="rounded-lg border bg-muted/40 p-4">
+        <Skeleton className="h-3 w-20" />
+        <Skeleton className="mt-2 h-5 w-48 max-w-full" />
+        <Skeleton className="mt-1.5 h-4 w-64 max-w-full" />
+      </div>
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-36" />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Skeleton className="h-24 w-full max-w-xs rounded-md" />
+          <Skeleton className="h-9 w-32 rounded-md" />
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <Skeleton className="h-9 w-28 rounded-md" />
+      </div>
+    </div>
+  );
+}
+
 export default function PhysicalStoresAdminPage() {
   const [stores, setStores] = useState<PhysicalStore[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Skeletons mirror the very first load only; a refresh after a save or delete
+  // keeps the current rows on screen instead of flashing placeholders.
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const [settingForm, setSettingForm] = useState<SettingForm>(emptySetting);
+  const [initialSettingLoading, setInitialSettingLoading] = useState(true);
   const [settingSaving, setSettingSaving] = useState(false);
   const [bannerPreview, setBannerPreview] = useState('');
   const bannerInputRef = useRef<HTMLInputElement | null>(null);
@@ -111,13 +182,12 @@ export default function PhysicalStoresAdminPage() {
 
   const loadStores = useCallback(async () => {
     try {
-      setLoading(true);
       const { data } = await physicalStoreApi.getAll();
       setStores(data.stores || []);
     } catch {
       toast.error('Failed to load stores');
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
     }
   }, []);
 
@@ -142,6 +212,8 @@ export default function PhysicalStoresAdminPage() {
       }
     } catch {
       toast.error('Failed to load banner settings');
+    } finally {
+      setInitialSettingLoading(false);
     }
   }, []);
 
@@ -188,8 +260,8 @@ export default function PhysicalStoresAdminPage() {
       }
     } catch (error) {
       const message =
-        (error as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message || 'Failed to save banner settings';
+        (error as { response?: { data?: { message?: string } } })?.response
+          ?.data?.message || 'Failed to save banner settings';
       toast.error(message);
     } finally {
       setSettingSaving(false);
@@ -224,12 +296,17 @@ export default function PhysicalStoresAdminPage() {
   };
 
   const addPhone = () =>
-    setForm((f) => ({ ...f, phones: [...f.phones, { label: '', number: '' }] }));
+    setForm((f) => ({
+      ...f,
+      phones: [...f.phones, { label: '', number: '' }],
+    }));
 
   const updatePhone = (index: number, key: 'label' | 'number', value: string) =>
     setForm((f) => ({
       ...f,
-      phones: f.phones.map((p, i) => (i === index ? { ...p, [key]: value } : p)),
+      phones: f.phones.map((p, i) =>
+        i === index ? { ...p, [key]: value } : p
+      ),
     }));
 
   const removePhone = (index: number) =>
@@ -264,8 +341,8 @@ export default function PhysicalStoresAdminPage() {
       }
     } catch (error) {
       const message =
-        (error as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message || 'Failed to save store';
+        (error as { response?: { data?: { message?: string } } })?.response
+          ?.data?.message || 'Failed to save store';
       toast.error(message);
     } finally {
       setSaving(false);
@@ -353,152 +430,177 @@ export default function PhysicalStoresAdminPage() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                <Label htmlFor="banner-enabled" className="text-sm">
-                  {settingForm.enabled ? 'Shown on home' : 'Hidden'}
-                </Label>
-                <Switch
-                  id="banner-enabled"
-                  checked={settingForm.enabled}
-                  onCheckedChange={(v) =>
-                    setSettingForm((f) => ({ ...f, enabled: v }))
-                  }
-                />
+                {initialSettingLoading ? (
+                  <>
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-5 w-9 rounded-full" />
+                  </>
+                ) : (
+                  <>
+                    <Label htmlFor="banner-enabled" className="text-sm">
+                      {settingForm.enabled ? 'Shown on home' : 'Hidden'}
+                    </Label>
+                    <Switch
+                      id="banner-enabled"
+                      checked={settingForm.enabled}
+                      onCheckedChange={(v) =>
+                        setSettingForm((f) => ({ ...f, enabled: v }))
+                      }
+                    />
+                  </>
+                )}
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="banner-title">Title</Label>
-                <Input
-                  id="banner-title"
-                  value={settingForm.title}
-                  onChange={(e) =>
-                    setSettingForm((f) => ({ ...f, title: e.target.value }))
-                  }
-                  placeholder="Physical Stores"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="banner-subtitle">Subtitle</Label>
-                <Input
-                  id="banner-subtitle"
-                  value={settingForm.subtitle}
-                  onChange={(e) =>
-                    setSettingForm((f) => ({ ...f, subtitle: e.target.value }))
-                  }
-                  placeholder="Visit Our Store & Get Your Desired IT Product!"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="banner-button-label">Button label</Label>
-                <Input
-                  id="banner-button-label"
-                  value={settingForm.buttonLabel}
-                  onChange={(e) =>
-                    setSettingForm((f) => ({
-                      ...f,
-                      buttonLabel: e.target.value,
-                    }))
-                  }
-                  placeholder="Find Our Stores"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="banner-button-link">Button link</Label>
-                <Input
-                  id="banner-button-link"
-                  value={settingForm.buttonLink}
-                  onChange={(e) =>
-                    setSettingForm((f) => ({ ...f, buttonLink: e.target.value }))
-                  }
-                  placeholder="/physical-stores"
-                />
-              </div>
-            </div>
+            {initialSettingLoading ? (
+              <BannerFormSkeleton />
+            ) : (
+              <>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="banner-title">Title</Label>
+                    <Input
+                      id="banner-title"
+                      value={settingForm.title}
+                      onChange={(e) =>
+                        setSettingForm((f) => ({ ...f, title: e.target.value }))
+                      }
+                      placeholder="Physical Stores"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="banner-subtitle">Subtitle</Label>
+                    <Input
+                      id="banner-subtitle"
+                      value={settingForm.subtitle}
+                      onChange={(e) =>
+                        setSettingForm((f) => ({
+                          ...f,
+                          subtitle: e.target.value,
+                        }))
+                      }
+                      placeholder="Visit Our Store & Get Your Desired IT Product!"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="banner-button-label">Button label</Label>
+                    <Input
+                      id="banner-button-label"
+                      value={settingForm.buttonLabel}
+                      onChange={(e) =>
+                        setSettingForm((f) => ({
+                          ...f,
+                          buttonLabel: e.target.value,
+                        }))
+                      }
+                      placeholder="Find Our Stores"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="banner-button-link">Button link</Label>
+                    <Input
+                      id="banner-button-link"
+                      value={settingForm.buttonLink}
+                      onChange={(e) =>
+                        setSettingForm((f) => ({
+                          ...f,
+                          buttonLink: e.target.value,
+                        }))
+                      }
+                      placeholder="/physical-stores"
+                    />
+                  </div>
+                </div>
 
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-              <div className="flex items-center gap-2 pb-2.5">
-                <Switch
-                  id="banner-count"
-                  checked={settingForm.showCount}
-                  onCheckedChange={(v) =>
-                    setSettingForm((f) => ({ ...f, showCount: v }))
-                  }
-                />
-                <Label htmlFor="banner-count">Show store count</Label>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="banner-suffix">Count suffix</Label>
-                <Input
-                  id="banner-suffix"
-                  className="w-24"
-                  value={settingForm.countSuffix}
-                  onChange={(e) =>
-                    setSettingForm((f) => ({
-                      ...f,
-                      countSuffix: e.target.value,
-                    }))
-                  }
-                  placeholder="+"
-                />
-              </div>
-            </div>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                  <div className="flex items-center gap-2 pb-2.5">
+                    <Switch
+                      id="banner-count"
+                      checked={settingForm.showCount}
+                      onCheckedChange={(v) =>
+                        setSettingForm((f) => ({ ...f, showCount: v }))
+                      }
+                    />
+                    <Label htmlFor="banner-count">Show store count</Label>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="banner-suffix">Count suffix</Label>
+                    <Input
+                      id="banner-suffix"
+                      className="w-24"
+                      value={settingForm.countSuffix}
+                      onChange={(e) =>
+                        setSettingForm((f) => ({
+                          ...f,
+                          countSuffix: e.target.value,
+                        }))
+                      }
+                      placeholder="+"
+                    />
+                  </div>
+                </div>
 
-            <div className="rounded-lg border bg-muted/40 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Live preview
-              </p>
-              <p className="mt-1 text-lg font-semibold">{previewHeading}</p>
-              {settingForm.subtitle && (
-                <p className="text-sm text-muted-foreground">
-                  {settingForm.subtitle}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label>Banner image (optional)</Label>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div
-                  className="h-24 w-full max-w-xs rounded-md border bg-muted bg-cover bg-center"
-                  style={
-                    bannerPreview
-                      ? { backgroundImage: `url(${bannerPreview})` }
-                      : undefined
-                  }
-                />
-                <div className="flex gap-2">
-                  <input
-                    ref={bannerInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={onBannerPick}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => bannerInputRef.current?.click()}
-                  >
-                    <ImagePlus className="mr-2 h-4 w-4" /> Choose image
-                  </Button>
-                  {bannerPreview && (
-                    <Button type="button" variant="ghost" onClick={removeBanner}>
-                      <X className="mr-2 h-4 w-4" /> Remove
-                    </Button>
+                <div className="rounded-lg border bg-muted/40 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Live preview
+                  </p>
+                  <p className="mt-1 text-lg font-semibold">{previewHeading}</p>
+                  {settingForm.subtitle && (
+                    <p className="text-sm text-muted-foreground">
+                      {settingForm.subtitle}
+                    </p>
                   )}
                 </div>
-              </div>
-            </div>
 
-            <div className="flex justify-end">
-              <Button onClick={saveSetting} disabled={settingSaving}>
-                {settingSaving && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                Save banner
-              </Button>
-            </div>
+                <div className="space-y-2">
+                  <Label>Banner image (optional)</Label>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div
+                      className="h-24 w-full max-w-xs rounded-md border bg-muted bg-cover bg-center"
+                      style={
+                        bannerPreview
+                          ? { backgroundImage: `url(${bannerPreview})` }
+                          : undefined
+                      }
+                    />
+                    <div className="flex gap-2">
+                      <input
+                        ref={bannerInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={onBannerPick}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => bannerInputRef.current?.click()}
+                      >
+                        <ImagePlus className="mr-2 h-4 w-4" /> Choose image
+                      </Button>
+                      {bannerPreview && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={removeBanner}
+                        >
+                          <X className="mr-2 h-4 w-4" /> Remove
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button onClick={saveSetting} disabled={settingSaving}>
+                    {settingSaving && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    Save banner
+                  </Button>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -508,19 +610,27 @@ export default function PhysicalStoresAdminPage() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold">Branches</h2>
-                <p className="text-sm text-muted-foreground">
-                  {stores.length} total · {activeCount} active
-                </p>
+                {initialLoading ? (
+                  <Skeleton className="mt-1.5 h-4 w-28" />
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {stores.length} total · {activeCount} active
+                  </p>
+                )}
               </div>
               <Button onClick={openCreate}>
                 <Plus className="mr-2 h-4 w-4" /> Add store
               </Button>
             </div>
 
-            {loading ? (
-              <div className="flex items-center justify-center py-12 text-muted-foreground">
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading
-                stores…
+            {initialLoading ? (
+              <div className="space-y-3" aria-busy="true">
+                <span className="sr-only" role="status">
+                  Loading stores…
+                </span>
+                {[0, 1, 2].map((key) => (
+                  <StoreRowSkeleton key={key} />
+                ))}
               </div>
             ) : stores.length === 0 ? (
               <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
@@ -649,21 +759,35 @@ export default function PhysicalStoresAdminPage() {
               </p>
             </div>
 
-            <RichTextEditor
-              value={settingForm.description}
-              onChange={(html) =>
-                setSettingForm((f) => ({ ...f, description: html }))
-              }
-            />
+            {initialSettingLoading ? (
+              <div className="space-y-4" aria-busy="true">
+                <span className="sr-only" role="status">
+                  Loading description…
+                </span>
+                <Skeleton className="h-40 w-full rounded-lg" />
+                <div className="flex justify-end">
+                  <Skeleton className="h-9 w-36 rounded-md" />
+                </div>
+              </div>
+            ) : (
+              <>
+                <RichTextEditor
+                  value={settingForm.description}
+                  onChange={(html) =>
+                    setSettingForm((f) => ({ ...f, description: html }))
+                  }
+                />
 
-            <div className="flex justify-end">
-              <Button onClick={saveSetting} disabled={settingSaving}>
-                {settingSaving && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                Save description
-              </Button>
-            </div>
+                <div className="flex justify-end">
+                  <Button onClick={saveSetting} disabled={settingSaving}>
+                    {settingSaving && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    Save description
+                  </Button>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -823,9 +947,7 @@ export default function PhysicalStoresAdminPage() {
               <Switch
                 id="store-active"
                 checked={form.active}
-                onCheckedChange={(v) =>
-                  setForm((f) => ({ ...f, active: v }))
-                }
+                onCheckedChange={(v) => setForm((f) => ({ ...f, active: v }))}
               />
             </div>
           </div>

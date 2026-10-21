@@ -26,6 +26,13 @@ The API host now runs on NestJS and can be started with:
 - Public `GET /api/sliders`, `GET /:id`, and admin-only create/update/delete,
   reorder, and autoplay settings use NestJS/Drizzle. Slider image uploads retain
   the existing Cloudinary folder and transformations.
+- `GET /api/service-finders`, `GET /:id`, and admin-only
+  `POST /`, `PUT /:id`, `PUT /reorder`, and `DELETE /:id` —
+  NestJS/Drizzle home page "service finder" cards (icon key, title, subtitle,
+  optional link, homepage visibility), rendered by the storefront
+  `components/homeComponents/ServiceBox.tsx`. `GET /api/service-finders/setting`
+  and admin-only `PUT` expose the section-level switch that hides or shows the
+  whole block at once.
 - Admin SMS settings, balance checks, sending, and paginated send history are
   served by NestJS and use Neon.
 - `GET /api/maintenance/status` and super-admin-only `PUT /api/maintenance` —
@@ -37,6 +44,14 @@ The API host now runs on NestJS and can be started with:
   (`customer_orders`). SSLCommerz callback routes are registered in NestJS and
   share the Drizzle order repository; existing analytics, dashboard, customer
   summaries, and invoice generation also read the Drizzle order table.
+- `GET /api/dashboard` (admin-only, Express + Drizzle) returns the KPI payload
+  the admin dashboard renders: `revenue`, `orders`, `pendingOrders`,
+  `ordersByStatus`, `customers`, `products`, `productsSold`, `recentOrders`,
+  `topProducts`, `salesByCategory`, `monthlyRevenue`, plus `lowStock` (active
+  products at or below `DASHBOARD_LOW_STOCK_THRESHOLD`, default 5) and
+  `recentActivity` (latest mutating audit entries; read-only requests and
+  logins-only noise are filtered out, and audit-store failures degrade to an
+  empty list instead of failing the whole dashboard).
 - Super-admin permission-group CRUD uses NestJS/Drizzle. TeamMember records and
   permission-group usage counts now use Neon.
 - Physical store CRUD, ordering, storefront banner settings, and banner uploads
@@ -71,6 +86,12 @@ product, promo, popup-offer, question, permission-group, physical-store,
 store-settings, sliders, SMS, PC-builder saved-build, notifications, team,
 staff, auth, setup, and user-management APIs use NestJS.
 This keeps existing API URLs while the remaining features are migrated.
+
+> Maintenance note: Nest registers controller routes in method-declaration
+> order, so any `PUT /reorder` handler must be declared **before** the
+> `PUT /:id` handler or the static path is shadowed by the parameter route.
+> The service-finder, slider, category, home-slider-text and physical-store
+> controllers follow this order.
 
 NestJS, PostgreSQL, and Drizzle are installed. Normalized Drizzle schemas and
 generated SQL are provided for migrated features; JSONB staging tables remain
@@ -353,6 +374,29 @@ table, including JSONB phone entries, active/order indexing, and field checks.
 reads, admin setting updates, and existing Cloudinary banner uploads run in
 NestJS. Mongo physical-store and setting records are not imported
 automatically; their previous JSONB staging tables remain separate.
+
+## Service finder migration
+
+`src/models/ServiceFinder.js` defines the normalized `service_finder_entries`
+table (title, subtitle, icon key, optional link, active flag, order index, and
+field checks). CRUD, reorder, and public active filtering run in
+`src/service-finders/` on NestJS/Drizzle. The migration seeds the three cards
+that used to be hard-coded in `components/homeComponents/ServiceBox.tsx`
+(Laptop Finder, Raise a complaint, Service center), so the homepage looks
+unchanged while every card becomes editable from `/admin/service-finder`,
+including the icon picker and the show/hide switch.
+
+`src/models/ServiceFinderSetting.js` adds the `service_finder_settings`
+singleton whose `enabled` flag hides or shows the whole section on the homepage
+(the "Show section" switch in the card header). Per-card `active` flags keep
+working underneath it: a card is only rendered when both are on.
+
+The homepage reads the cards through `serverApi.fetchServiceFinderItems` /
+`fetchServiceFinderSetting`, which are tagged `service-finder` and cached for
+60s. Every write from `/admin/service-finder` (create, update, toggle, reorder,
+delete, section switch) then calls the frontend's `revalidateStorefront()` helper,
+so the tag/path are expired immediately and the storefront shows the change on its
+next request — no hard refresh and no waiting out the cache window.
 
 ## Counter migration
 

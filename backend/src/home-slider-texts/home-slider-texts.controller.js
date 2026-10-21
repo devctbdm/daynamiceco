@@ -46,6 +46,11 @@ class HomeSliderTextsController {
     };
   }
 
+  async reorder(body) {
+    await this.homeSliderTextsService.reorder(body?.orders);
+    return { success: true, message: "Texts reordered" };
+  }
+
   async update(id, body) {
     const text = await this.homeSliderTextsService.update(id, body);
     if (!text) {
@@ -59,11 +64,6 @@ class HomeSliderTextsController {
       throw notFound();
     }
     return { success: true, message: "Text deleted" };
-  }
-
-  async reorder(body) {
-    await this.homeSliderTextsService.reorder(body?.orders);
-    return { success: true, message: "Texts reordered" };
   }
 }
 

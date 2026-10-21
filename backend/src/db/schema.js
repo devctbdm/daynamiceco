@@ -18,6 +18,8 @@ import { productEntries } from "../models/Product.js";
 import { promoCodeEntries } from "../models/PromoCode.js";
 import { questionEntries } from "../models/Question.js";
 import { savedBuildEntries } from "../models/SavedBuild.js";
+import { serviceFinderEntries } from "../models/ServiceFinder.js";
+import { serviceFinderSettings } from "../models/ServiceFinderSetting.js";
 import { sessionEntries } from "../models/Session.js";
 import { sliderEntries } from "../models/Slider.js";
 import { sliderSettingEntries } from "../models/SliderSetting.js";
@@ -27,7 +29,38 @@ import { storeSettings } from "../models/StoreSetting.js";
 import { teamMemberEntries } from "../models/TeamMember.js";
 import { userEntries } from "../models/User.js";
 
-export { categoryEntries, customerOrders, holidaySettings, homePageContent, homeSliderSettings, homeSliderTextEntries, maintenanceSetting, notificationEntries, offerEntries, permissionGroupEntries, physicalStoreBannerSettings, physicalStoreEntries, popupOfferSettings, productEntries, promoCodeEntries, questionEntries, savedBuildEntries, sequenceCounters, sessionEntries, shoppingCartItems, shoppingCarts, sliderEntries, sliderSettingEntries, smsLogEntries, smsSettingEntries, storeSettings, teamMemberEntries, userEntries };
+export {
+  categoryEntries,
+  customerOrders,
+  holidaySettings,
+  homePageContent,
+  homeSliderSettings,
+  homeSliderTextEntries,
+  maintenanceSetting,
+  notificationEntries,
+  offerEntries,
+  permissionGroupEntries,
+  physicalStoreBannerSettings,
+  physicalStoreEntries,
+  popupOfferSettings,
+  productEntries,
+  promoCodeEntries,
+  questionEntries,
+  savedBuildEntries,
+  sequenceCounters,
+  serviceFinderEntries,
+  serviceFinderSettings,
+  sessionEntries,
+  shoppingCartItems,
+  shoppingCarts,
+  sliderEntries,
+  sliderSettingEntries,
+  smsLogEntries,
+  smsSettingEntries,
+  storeSettings,
+  teamMemberEntries,
+  userEntries,
+};
 
 const legacyDocumentTable = (name) =>
   pgTable(name, {

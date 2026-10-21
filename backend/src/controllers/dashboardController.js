@@ -2,8 +2,12 @@ import { findAllOrdersForReporting } from "../orders/orders.service.js";
 import { countUsers, findUsersByIds } from "../users/users.repository.js";
 import {
   countActiveProducts,
+  findLowStockProducts,
   findProductSummariesByIds,
 } from "../products/products.repository.js";
+import { listAuditLogs } from "../audit/audit.repository.js";
+
+const LOW_STOCK_THRESHOLD = Number(process.env.DASHBOARD_LOW_STOCK_THRESHOLD || 5);
 
 export const getDashboardStats = async (req, res) => {
   try {
@@ -20,10 +24,20 @@ export const getDashboardStats = async (req, res) => {
         sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0),
       0,
     );
-    const [customers, products] = await Promise.all([
-      countUsers({ role: "customer" }),
-      countActiveProducts(),
-    ]);
+    const [customers, products, lowStockProducts, auditEntries] =
+      await Promise.all([
+        countUsers({ role: "customer" }),
+        countActiveProducts(),
+        findLowStockProducts({ threshold: LOW_STOCK_THRESHOLD, limit: 6 }),
+        listAuditLogs({ limit: 24 })
+          .then(({ logs }) => logs)
+          .catch((error) => {
+          // The dashboard must keep working if the audit store is unavailable —
+          // the activity panel simply renders its empty state.
+          console.error("Dashboard recent activity Error:", error);
+          return [];
+        }),
+      ]);
 
     const ordersByStatus = { pending: 0, processing: 0, cancelled: 0 };
     for (const order of allOrders) {
@@ -122,11 +136,28 @@ export const getDashboardStats = async (req, res) => {
         customers,
         productsSold,
         products,
+        pendingOrders: ordersByStatus.pending,
         ordersByStatus,
         recentOrders,
         topProducts,
         salesByCategory,
         monthlyRevenue,
+        lowStock: lowStockProducts,
+        // Keep the feed meaningful: record mutations and logins, not the
+        // dashboard's own read requests (which would self-recur).
+        recentActivity: auditEntries
+          .filter((log) => !/^(GET|HEAD|OPTIONS) /.test(log.action || ""))
+          .slice(0, 6)
+          .map((log) => ({
+          _id: log._id,
+          action: log.action,
+          eventType: log.eventType,
+          actorName: log.actor?.name ?? "System",
+          actorRole: log.actor?.role ?? null,
+          target: log.target ?? "",
+          statusCode: log.changes?.statusCode ?? null,
+          createdAt: log.createdAt,
+        })),
       },
     });
   } catch (error) {

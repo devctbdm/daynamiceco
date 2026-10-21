@@ -1,9 +1,9 @@
 'use client';
 
-import { categoryApi, popupOfferApi, storeApi } from '@/lib/api';
+import { categoryApi, popupOfferApi, storeApi, dashboardApi, notificationApi } from '@/lib/api';
 import { apiFetch } from '@/lib/http';
 import { createResource } from '@/lib/resource';
-import type { Category, PopupOffer, StoreSettings } from '@/lib/api';
+import type { Category, PopupOffer, StoreSettings, DashboardStats } from '@/lib/api';
 import type { User } from '@/types/user';
 
 /**
@@ -51,6 +51,29 @@ export const popupOfferResource = createResource<PopupOffer>(
     return data.popupOffer;
   },
   { ttlMs: 5 * 60_000 }
+);
+
+// Admin dashboard stats. Short TTL: collapses the duplicate requests fired by
+// StrictMode double-mounts / quick navigations, without showing stale numbers.
+export const dashboardStatsResource = createResource<DashboardStats>(
+  'dashboard/stats',
+  async () => {
+    const { data } = await dashboardApi.getStats();
+    return data.stats;
+  },
+  { ttlMs: 10_000 }
+);
+
+// Sidebar notification badge. The live counter keeps its own state between
+// socket events; this only dedupes the repeated initial fetches. Invalidate
+// whenever notifications are read (or created) elsewhere.
+export const notificationUnreadResource = createResource<number>(
+  'notifications/unread-count',
+  async () => {
+    const { data } = await notificationApi.unreadCount();
+    return data.unreadCount;
+  },
+  { ttlMs: 15_000 }
 );
 
 /**

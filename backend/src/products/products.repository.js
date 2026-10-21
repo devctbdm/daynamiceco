@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { getDatabase } from "../db/database.js";
 import { productEntries } from "../models/Product.js";
 import { findUsersByIds } from "../users/users.repository.js";
@@ -53,6 +53,44 @@ export async function countActiveProducts(database = getDatabase()) {
     .from(productEntries)
     .where(eq(productEntries.status, "active"));
   return Number(result?.count ?? 0);
+}
+
+/**
+ * Active products at or below a stock threshold, most critical first.
+ * Powers the dashboard "low stock" panel (out-of-stock items sort highest).
+ */
+export async function findLowStockProducts(
+  { limit = 6, threshold = 5 } = {},
+  database = getDatabase(),
+) {
+  const rows = await database
+    .select({
+      id: productEntries.id,
+      name: productEntries.name,
+      slug: productEntries.slug,
+      images: productEntries.images,
+      stock: productEntries.stock,
+      sku: productEntries.sku,
+    })
+    .from(productEntries)
+    .where(
+      and(
+        eq(productEntries.status, "active"),
+        lte(productEntries.stock, threshold),
+      ),
+    )
+    .orderBy(asc(productEntries.stock), asc(productEntries.name))
+    .limit(limit);
+
+  return rows.map((row) => ({
+    _id: row.id,
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    stock: Number(row.stock ?? 0),
+    sku: row.sku ?? "",
+    image: Array.isArray(row.images) ? (row.images[0] ?? "") : "",
+  }));
 }
 
 export async function productSkuExists(sku, database = getDatabase()) {

@@ -15,7 +15,8 @@ import {
   SidebarRail,
 } from '@/components/ui/sidebar';
 import { useStoreLogo } from '@/hooks/useStoreLogo';
-import { notificationApi } from '@/lib/api';
+import { ADMIN_NAV } from '@/lib/adminNav';
+import { notificationUnreadResource } from '@/lib/resources';
 import { getSocket } from '@/lib/socket';
 import { useAuth } from '@/store';
 import {
@@ -34,228 +35,29 @@ import {
   UserStar,
 } from 'lucide-react';
 
-// This is sample data.
+// The route tree lives in lib/adminNav.ts (shared with the header breadcrumb);
+// only the icons are declared here, keyed by group/page title.
+const NAV_ICONS: Record<string, React.ReactNode> = {
+  Dashboard: <LayoutDashboard />,
+  'Home Cms': <LayoutArrowRight />,
+  Products: <ShoppingCart />,
+  Categories: <ListSortAscending />,
+  Orders: <LayersArrowDown />,
+  'Filters Cms': <Layers />,
+  Promotionals: <Gem />,
+  Analytics: <ChartLine />,
+  Users: <UsersRound />,
+  Reviews: <UserStar />,
+  Notifications: <BellCheck />,
+  Administrator: <ShieldAlert />,
+  Settings: <Settings2Icon />,
+};
+
 const data = {
-  navMain: [
-    {
-      title: 'Dashboard',
-      url: '/admin/dashboard',
-      icon: <LayoutDashboard />,
-    },
-    {
-      title: 'Home Cms',
-      url: '#',
-      icon: <LayoutArrowRight />,
-      items: [
-        {
-          title: 'Slider',
-          url: '/admin/slider',
-        },
-
-        {
-          title: 'Home Slide Text',
-          url: '/admin/homeslidertext',
-        },
-        {
-          title: 'Service Finder',
-          url: '/admin/service-finder',
-        },
-        {
-          title: 'Physical Stores',
-          url: '/admin/physical-stores',
-        },
-        {
-          title: 'Home Text',
-          url: '/admin/hometext',
-        },
-      ],
-    },
-    {
-      title: 'Products',
-      url: '#',
-      icon: <ShoppingCart />,
-      items: [
-        {
-          title: 'All Products',
-          url: '/admin/products',
-        },
-        {
-          title: 'New Product',
-          url: '/admin/products/new',
-        },
-      ],
-    },
-    {
-      title: 'Categories',
-      url: '#',
-      icon: <ListSortAscending />,
-      items: [
-        {
-          title: 'All Categories',
-          url: '/admin/categories',
-        },
-        {
-          title: 'New Category',
-          url: '/admin/categories/new',
-        },
-      ],
-    },
-
-    {
-      title: 'Orders',
-      url: '#',
-      icon: <LayersArrowDown />,
-      items: [
-        {
-          title: 'All Orders',
-          url: '/admin/orders',
-        },
-        {
-          title: 'New Order',
-          url: '/admin/orders/new',
-        },
-      ],
-    },
-    {
-      title: 'Filters Cms',
-      url: '#',
-      icon: <Layers />,
-      items: [
-        {
-          title: 'All Filters',
-          url: '/admin/filters',
-        },
-        {
-          title: 'New Filter',
-          url: '/admin/filters/new',
-        },
-      ],
-    },
-    {
-      title: 'Promotionals',
-      url: '#',
-      icon: <Gem />,
-      items: [
-        {
-          title: 'Coupons',
-          url: '/admin/promo',
-        },
-
-        {
-          title: 'All Offers',
-          url: '/admin/offers',
-        },
-        {
-          title: 'New Offer',
-          url: '/admin/offers/new',
-        },
-
-        {
-          title: 'Popup Offer',
-          url: '/admin/popup',
-        },
-      ],
-    },
-    {
-      title: 'Analytics',
-      url: '#',
-      icon: <ChartLine />,
-      items: [
-        {
-          title: 'Overview',
-          url: '/admin/analytics',
-        },
-        {
-          title: 'Visitors',
-          url: '/admin/visitors',
-        },
-        {
-          title: 'admin history',
-          url: '/admin/history',
-        },
-        {
-          title: 'Health Check',
-          url: '/admin/health',
-        },
-      ],
-    },
-    {
-      title: 'Users',
-      url: '#',
-      icon: <UsersRound />,
-      items: [
-        {
-          title: 'Customers',
-          url: '/admin/customers',
-        },
-      ],
-    },
-
-    {
-      title: 'Reviews',
-      url: '#',
-      icon: <UserStar />,
-      items: [
-        {
-          title: 'Reviews',
-          url: '/admin/reviews',
-        },
-        {
-          title: 'Questions',
-          url: '/admin/questions',
-        },
-      ],
-    },
-    {
-      title: 'Notifications',
-      url: '/admin/notifications',
-      icon: <BellCheck />,
-    },
-    {
-      title: 'Administrator',
-      url: '#',
-      icon: <ShieldAlert />,
-      items: [
-        {
-          title: 'administrator',
-          url: '/admin/administrator',
-        },
-      ],
-    },
-    {
-      title: 'Settings',
-      url: '#',
-      icon: <Settings2Icon />,
-      items: [
-        {
-          title: 'General',
-          url: '/admin/settings',
-        },
-        {
-          title: 'Payments',
-          url: '/admin/payments',
-        },
-
-        {
-          title: 'SMS',
-          url: '/admin/sms',
-        },
-        {
-          title: 'Meta Catalog',
-          url: '/admin/meta',
-        },
-        {
-          title: 'Maintenance',
-          url: '/admin/maintenance',
-        },
-        {
-          title: 'Admin History',
-          url: '/admin/history',
-          icon: <ShieldAlert />,
-        },
-      ],
-    },
-  ],
+  navMain: ADMIN_NAV.map((item) => ({
+    ...item,
+    icon: NAV_ICONS[item.title],
+  })),
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
@@ -285,17 +87,30 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   useEffect(() => {
     let active = true;
     const load = () =>
-      notificationApi
-        .unreadCount()
-        .then((res) => {
-          if (active) setUnread(res.data.unreadCount);
+      // Shared resource: dedupes the repeated fetches caused by remounts;
+      // explicit `force` keeps the non-badge read paths (e.g. the events
+      // below) returning fresh data.
+      notificationUnreadResource
+        .get({ force: true })
+        .then((unreadCount) => {
+          if (active) setUnread(unreadCount);
         })
         .catch(() => {});
 
-    load();
+    // Warm the shared cache and hydrate the badge quickly.
+    notificationUnreadResource
+      .get()
+      .then((unreadCount) => {
+        if (active) setUnread(unreadCount);
+      })
+      .catch(() => {});
 
     const socket = getSocket();
-    const onNew = () => setUnread((u) => u + 1);
+    const onNew = () => {
+      setUnread((u) => u + 1);
+      // Drop the cached count so the next read refetches server truth.
+      notificationUnreadResource.invalidate();
+    };
     socket.on('notification:new', onNew);
     // The notifications page dispatches this when items are marked read.
     window.addEventListener('notifications-updated', load);

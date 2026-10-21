@@ -74,6 +74,9 @@ export const useAuth = () => {
   const register = useAppStore((state) => state.register);
   const logout = useAppStore((state) => state.logout);
   const fetchUser = useAppStore((state) => state.fetchUser);
+  const hydrateUserFromSession = useAppStore(
+    (state) => state.hydrateUserFromSession
+  );
   return {
     user,
     isLoading,
@@ -82,8 +85,18 @@ export const useAuth = () => {
     register,
     logout,
     fetchUser,
+    hydrateUserFromSession,
   };
 };
+
+// Restore the admin session snapshot (per-tab sessionStorage) immediately at
+// module init, BEFORE the first client render. Without this a browser refresh
+// always renders the admin-area skeleton until `/auth/me` answers (which can
+// take seconds on a cold database). The snapshot is still validated in the
+// background by `fetchUser`, and every API call is authorized server-side.
+if (typeof window !== 'undefined') {
+  useAppStore.getState().hydrateUserFromSession();
+}
 
 export const useCart = () => {
   const items = useAppStore((state) => state.items);

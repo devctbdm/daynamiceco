@@ -261,9 +261,16 @@ All admin product form logic lives in a shared **`components/admin/products/Prod
   `paymentApi`, `smsApi`, `pcPartsApi`, `pcBuilderApi`, …) + DTO types.
 - `pcPartsApi.list(filters)` — `GET /api/products/pc-parts` (public, no auth).
 - `pcBuilderApi.getMyBuilds()` / `.save(name, components)` / `.remove(id)` — `GET/POST/DELETE /api/pc-builder` (auth required).
-- `serverApi.ts` — **server-only** `fetch` + React `cache`, `no-store`, base `API_BASE_URL`.
-  Used by SSR `generateMetadata` (product page, sitemap, robots). Do **not** use `api`
-  inside server components.
+- `serverApi.ts` — **server-only** `fetch` + React `cache`, base `API_BASE_URL`.
+  Catalog reads use Next.js incremental revalidation (`next: { revalidate: 60 }`),
+  and a helper can add a cache **tag** so admin edits can flush it on demand.
+  Used by SSR pages/`generateMetadata` (product page, sitemap, robots). Do **not**
+  use `api` inside server components.
+- `cacheTags.ts` + `revalidate.ts` + `/api/revalidate` — on-demand storefront
+  revalidation. After a successful admin write, `revalidateStorefront(tags, paths)`
+  POSTs to the Route Handler, which verifies the staff token, keeps only
+  whitelisted tags/paths, and expires them with `revalidateTag(tag, { expire: 0 })`.
+  Without this, edited homepage content can lag up to the 60s revalidation window.
 - `socket.ts` — `getSocket()` singleton, auth via `mobile_token`, subscribes to `notification:new`.
 - `/api/[...path]` — Next Route Handler proxy. Auth calls (login/logout/verify-otp) go
   through this proxy; most data calls hit the backend directly via axios.
@@ -339,6 +346,12 @@ Open `http://localhost:3000`. Admin login: `http://localhost:3000/admin/login`.
 8. **New order status values** must be added in three places: `Order.orderStatus`
    enum, `updateOrderStatus` `validStatuses` array, and the `STATUS_TEMPLATES`
    (smsService) / `EMAIL_STATUS_META` (emailService).
+9. **On-demand storefront refresh:** to make an admin edit to cached content show up
+   immediately, (1) tag the `serverApi` fetch (`getJson(path, undefined, ['my-tag'])`),
+   (2) whitelist that tag + the affected paths in `src/app/api/revalidate/route.ts`,
+   and (3) `await revalidateStorefront(['my-tag'])` after the write. Expire with
+   `{ expire: 0 }`: `revalidateTag(tag, 'max')` is stale-while-revalidate and still
+   serves the old page once.
 
 ---
 

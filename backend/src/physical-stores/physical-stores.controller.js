@@ -58,6 +58,11 @@ class PhysicalStoresController {
     };
   }
 
+  async reorder(body) {
+    await this.physicalStoresService.reorder(body?.orders);
+    return { success: true, message: "Stores reordered" };
+  }
+
   async update(id, body) {
     const store = await this.physicalStoresService.update(id, body ?? {});
     if (!store) {
@@ -77,11 +82,6 @@ class PhysicalStoresController {
       });
     }
     return { success: true, message: "Store deleted" };
-  }
-
-  async reorder(body) {
-    await this.physicalStoresService.reorder(body?.orders);
-    return { success: true, message: "Stores reordered" };
   }
 
   async updateSetting(request, body) {

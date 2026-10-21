@@ -256,10 +256,13 @@ const NEST_HANDLED_PREFIXES = [
   "/api/products",
   "/api/promo",
   "/api/questions",
+  "/api/service-finders",
   "/api/setup",
   "/api/sliders",
   "/api/sms",
+  "/api/staff",
   "/api/store",
+  "/api/team",
   "/api/users",
 ];
 

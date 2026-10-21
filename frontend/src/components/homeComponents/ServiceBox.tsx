@@ -1,52 +1,61 @@
-import { Loader, MessageSquareWarning,LaptopMinimal } from "lucide-react"
-import {  } from "lucide-react"
+import Link from 'next/link';
+import {
+  fetchServiceFinderItems,
+  fetchServiceFinderSetting,
+} from '@/lib/serverApi';
+import { serviceIcon } from '@/lib/serviceIcons';
 
-type Service = {
-  id: number
-  title: string
-  icon: React.ElementType
-  description: string
-}
+/**
+ * Home page service finder cards (server rendered — no client JS).
+ * Icon, title, subtitle, link and homepage visibility are managed from
+ * /admin/service-finder; hidden cards are filtered out by the API and the
+ * whole section can be switched off from the same page.
+ */
+const ServiceBox = async () => {
+  const [services, setting] = await Promise.all([
+    fetchServiceFinderItems(),
+    fetchServiceFinderSetting(),
+  ]);
 
-const services: Service[] = [
-  {
-    id: 1,
-    title: "Laptop Finder",
-    icon: LaptopMinimal,
-    description: "Find the perfect laptop for your needs",
-  },
-  {
-    id: 2,
-    title: "Rase a complaint",
-    icon: MessageSquareWarning,
-    description: "Raise a complaint about any issue",
-  },
-  {
-    id: 3,
-    title: "Service center",
-    icon: Loader,
-    description: "Get your laptop repaired at our service center",
-  },
- 
-]
+  if (setting?.enabled === false) return null;
+  if (!services.length) return null;
 
-
-const ServiceBox = () => {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 py-4 justify-items-center">
-      {services.map((service) => (
-        <div key={service.title} className="flex items-center gap-4 border border-gray-200 p-4 rounded-lg w-full max-w-md">
-          <div className="w-12 h-12 flex items-center justify-center bg-linear-to-r from-blue-500 to-indigo-600 rounded-full">
-            <service.icon className="text-white w-6 h-6" />
-          </div>
-          <div>
-            <h3 className="font-semibold">{service.title}</h3>
-            <p className="text-sm text-gray-600">{service.description}</p>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
+    <div className="grid grid-cols-1 gap-4 py-4 justify-items-center md:grid-cols-2 lg:grid-cols-4">
+      {services.map((service) => {
+        const Icon = serviceIcon(service.icon);
+        const body = (
+          <>
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-linear-to-r from-blue-500 to-indigo-600">
+              <Icon className="size-6 text-white" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <h3 className="font-semibold">{service.title}</h3>
+              {service.subtitle && (
+                <p className="text-sm text-gray-600">{service.subtitle}</p>
+              )}
+            </div>
+          </>
+        );
+        const className =
+          'flex w-full max-w-md items-center gap-4 rounded-lg border border-gray-200 p-4';
 
-export default ServiceBox
+        return service.href ? (
+          <Link
+            key={service._id}
+            href={service.href}
+            className={`${className} transition-shadow hover:shadow-md`}
+          >
+            {body}
+          </Link>
+        ) : (
+          <div key={service._id} className={className}>
+            {body}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+export default ServiceBox;
