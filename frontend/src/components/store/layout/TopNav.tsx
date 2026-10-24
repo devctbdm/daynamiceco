@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Search, Gift, Sparkles, User, ShoppingCart, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useCart } from '@/store';
+import { useCart, useAuth } from '@/store';
 import { SearchBar } from '@/components/store/layout/SearchBar';
 import { MobileCategoryMenu } from '@/components/store/layout/MobileCategoryMenu';
 import { useUI } from '@/store';
@@ -12,7 +12,8 @@ import { useState, useEffect } from 'react';
 import Logo from '@/components/store/logo/Logo';
 
 const TopNav = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { user, isAuthenticated, logout, fetchUser } = useAuth();
+  const isLoggedIn = isAuthenticated && !!user;
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { toggleCartDrawer } = useUI();
@@ -20,8 +21,10 @@ const TopNav = () => {
   const { totalItems } = useCart();
 
   useEffect(() => {
-    setIsLoggedIn(!!localStorage.getItem('mobile_token'));
-  }, []);
+    // Validate session on mount; if token exists but is expired/invalid,
+    // fetchUser will clear auth state via /auth/me
+    fetchUser();
+  }, [fetchUser]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -130,10 +133,12 @@ const TopNav = () => {
                   <span className="text-slate-400">|</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      localStorage.removeItem('mobile_token');
-                      document.cookie = 'token=; path=/; max-age=0';
-                      window.location.reload();
+                    onClick={async () => {
+                      try {
+                        await logout();
+                      } finally {
+                        window.location.href = '/';
+                      }
                     }}
                     className="text-slate-400 hover:text-red-400"
                   >
