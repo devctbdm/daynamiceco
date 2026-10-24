@@ -174,6 +174,7 @@ export type SliderSetting = {
   enabled: boolean;
   autoSlide: boolean;
   interval: number;
+  updatedAt?: string;
 };
 
 export const sliderApi = {

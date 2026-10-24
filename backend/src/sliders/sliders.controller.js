@@ -1,18 +1,18 @@
 import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  HttpCode,
-  Inject,
-  NotFoundException,
-  Param,
-  Post,
-  Put,
-  Query,
-  Req,
-  UseGuards,
-  UseInterceptors,
+    Body,
+    Controller,
+    Delete,
+    Get,
+    HttpCode,
+    Inject,
+    NotFoundException,
+    Param,
+    Post,
+    Put,
+    Query,
+    Req,
+    UseGuards,
+    UseInterceptors,
 } from "@nestjs/common";
 import { LegacyAdminGuard } from "../auth/legacy-admin.guard.js";
 import { SliderImageInterceptor } from "./slider-image.interceptor.js";
@@ -50,6 +50,13 @@ class SlidersController {
   }
 
   async update(id, request, body) {
+    if (id === "setting" || id === "settings") {
+      return {
+        success: true,
+        setting: await this.slidersService.updateSetting(body ?? {}),
+      };
+    }
+
     const slider = await this.slidersService.update(
       id,
       body ?? {},
@@ -111,6 +118,11 @@ Req()(SlidersController.prototype, "create", 0);
 Body()(SlidersController.prototype, "create", 1);
 
 Put("setting")(
+  SlidersController.prototype,
+  "updateSetting",
+  descriptor("updateSetting"),
+);
+Put("settings")(
   SlidersController.prototype,
   "updateSetting",
   descriptor("updateSetting"),

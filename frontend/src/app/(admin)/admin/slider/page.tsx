@@ -1,20 +1,5 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Image from 'next/image';
-import {
-  ArrowDown,
-  ArrowUp,
-  ImagePlus,
-  Info,
-  Loader2,
-  Pencil,
-  Plus,
-  Trash2,
-  Upload,
-  X,
-} from 'lucide-react';
-import { toast } from 'sonner';
 import { SiteHeader } from '@/components/site-header';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
@@ -40,8 +25,6 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -49,6 +32,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import {
   Tooltip,
   TooltipContent,
@@ -62,6 +47,22 @@ import {
   type SliderSetting,
   type SliderType,
 } from '@/lib/api';
+import {
+  ArrowDown,
+  ArrowUp,
+  ImagePlus,
+  Info,
+  Loader2,
+  Pencil,
+  Plus,
+  Save,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
+import Image from 'next/image';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 const IMAGE_DIMENSIONS: Record<SliderType, string> = {
   hero: 'Recommended image dimensions: 982 × 500 px.',
@@ -79,6 +80,7 @@ const DEFAULT_SETTING: SliderSetting = {
   enabled: true,
   autoSlide: true,
   interval: 5,
+  updatedAt: new Date().toISOString(),
 };
 
 const EMPTY_FORM: SliderForm = {
@@ -99,6 +101,20 @@ function validLink(link: string) {
   } catch {
     return false;
   }
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return 'Never';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Never';
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
 }
 
 function SliderRow({
@@ -254,11 +270,22 @@ function SliderSettingsSkeleton() {
   return (
     <>
       {[
-        { label: 'Main slider', description: 'w-44', control: 'h-5 w-9 rounded-full' },
-        { label: 'Auto-slide', description: 'w-56', control: 'h-5 w-9 rounded-full' },
+        {
+          label: 'Main slider',
+          description: 'w-44',
+          control: 'h-5 w-9 rounded-full',
+        },
+        {
+          label: 'Auto-slide',
+          description: 'w-56',
+          control: 'h-5 w-9 rounded-full',
+        },
         { label: 'Slide interval', description: 'w-28', control: 'h-8 w-36' },
       ].map((row) => (
-        <div key={row.label} className="flex items-center justify-between gap-4">
+        <div
+          key={row.label}
+          className="flex items-center justify-between gap-4"
+        >
           <div className="space-y-2">
             <Skeleton className="h-4 w-24" />
             <Skeleton className={`h-3.5 ${row.description}`} />
@@ -273,6 +300,8 @@ function SliderSettingsSkeleton() {
 export default function SliderPage() {
   const [sliders, setSliders] = useState<Slider[]>([]);
   const [setting, setSetting] = useState<SliderSetting>(DEFAULT_SETTING);
+  const [draftSetting, setDraftSetting] =
+    useState<SliderSetting>(DEFAULT_SETTING);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [savingSetting, setSavingSetting] = useState(false);
@@ -290,8 +319,10 @@ export default function SliderPage() {
       setLoading(true);
       setLoadError('');
       const { data } = await sliderApi.getAll();
+      const nextSetting = data.setting ?? DEFAULT_SETTING;
       setSliders(data.sliders ?? []);
-      setSetting(data.setting ?? DEFAULT_SETTING);
+      setSetting(nextSetting);
+      setDraftSetting(nextSetting);
     } catch (error) {
       const message =
         error instanceof Error
@@ -302,6 +333,9 @@ export default function SliderPage() {
       setLoading(false);
     }
   }, []);
+
+  const isSettingDirty =
+    JSON.stringify(draftSetting) !== JSON.stringify(setting);
 
   useEffect(() => {
     void fetchSliders();
@@ -401,15 +435,19 @@ export default function SliderPage() {
   };
 
   const updateSetting = async (patch: Partial<SliderSetting>) => {
-    const previous = setting;
-    const next = { ...setting, ...patch };
-    setSetting(next);
+    setDraftSetting((current) => ({ ...current, ...patch }));
+  };
+
+  const saveSettings = async () => {
+    if (!isSettingDirty) return;
+
     setSavingSetting(true);
     try {
-      const { data } = await sliderApi.updateSetting(patch);
+      const { data } = await sliderApi.updateSetting(draftSetting);
       setSetting(data.setting);
+      setDraftSetting(data.setting);
+      toast.success('Slider settings saved.');
     } catch (error) {
-      setSetting(previous);
       toast.error(
         error instanceof Error
           ? error.message
@@ -517,8 +555,32 @@ export default function SliderPage() {
         )}
 
         <Card aria-busy={loading}>
-          <CardHeader>
-            <CardTitle>Slider settings</CardTitle>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>Slider settings</CardTitle>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                Last updated:{' '}
+                {formatDateTime(draftSetting.updatedAt ?? setting.updatedAt)}
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={() => void saveSettings()}
+              disabled={loading || savingSetting || !isSettingDirty}
+              className="gap-2"
+            >
+              {savingSetting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4" />
+                  Save
+                </>
+              )}
+            </Button>
           </CardHeader>
           <CardContent className="grid gap-5 sm:grid-cols-3">
             {loading ? (
@@ -528,61 +590,63 @@ export default function SliderPage() {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <Label htmlFor="main-slider-toggle">Main slider</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Show enabled slides on the homepage.
-                  </p>
+                    <p className="text-sm text-muted-foreground">
+                      Show enabled slides on the homepage.
+                    </p>
+                  </div>
+                  <Switch
+                    id="main-slider-toggle"
+                    checked={draftSetting.enabled}
+                    disabled={savingSetting || loading}
+                    onCheckedChange={(enabled) =>
+                      void updateSetting({ enabled })
+                    }
+                  />
                 </div>
-                <Switch
-                  id="main-slider-toggle"
-                  checked={setting.enabled}
-                  disabled={savingSetting || loading}
-                  onCheckedChange={(enabled) => void updateSetting({ enabled })}
-                />
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <Label htmlFor="auto-slide-toggle">Auto-slide</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Manual navigation remains available when off.
-                  </p>
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <Label htmlFor="auto-slide-toggle">Auto-slide</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Manual navigation remains available when off.
+                    </p>
+                  </div>
+                  <Switch
+                    id="auto-slide-toggle"
+                    checked={draftSetting.autoSlide}
+                    disabled={savingSetting || loading}
+                    onCheckedChange={(autoSlide) =>
+                      void updateSetting({ autoSlide })
+                    }
+                  />
                 </div>
-                <Switch
-                  id="auto-slide-toggle"
-                  checked={setting.autoSlide}
-                  disabled={savingSetting || loading}
-                  onCheckedChange={(autoSlide) =>
-                    void updateSetting({ autoSlide })
-                  }
-                />
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <Label htmlFor="slide-interval">Slide interval</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Choose 3–10 seconds.
-                  </p>
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <Label htmlFor="slide-interval">Slide interval</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Choose 3–10 seconds.
+                    </p>
+                  </div>
+                  <Select
+                    value={String(draftSetting.interval)}
+                    disabled={savingSetting || loading}
+                    onValueChange={(value) =>
+                      value && void updateSetting({ interval: Number(value) })
+                    }
+                  >
+                    <SelectTrigger id="slide-interval" className="w-36">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 8 }, (_, index) => index + 3).map(
+                        (seconds) => (
+                          <SelectItem key={seconds} value={String(seconds)}>
+                            {seconds} seconds
+                          </SelectItem>
+                        )
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <Select
-                  value={String(setting.interval)}
-                  disabled={savingSetting || loading}
-                  onValueChange={(value) =>
-                    value && void updateSetting({ interval: Number(value) })
-                  }
-                >
-                  <SelectTrigger id="slide-interval" className="w-36">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 8 }, (_, index) => index + 3).map(
-                      (seconds) => (
-                        <SelectItem key={seconds} value={String(seconds)}>
-                          {seconds} seconds
-                        </SelectItem>
-                      )
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
               </>
             )}
           </CardContent>

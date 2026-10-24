@@ -2,12 +2,12 @@ import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import { asc, eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { DATABASE } from "../db/database.js";
+import { cloudinary } from "../middleware/upload.js";
 import { serializeSlider, sliderEntries } from "../models/Slider.js";
 import {
-  serializeSliderSetting,
-  sliderSettingEntries,
+    serializeSliderSetting,
+    sliderSettingEntries,
 } from "../models/SliderSetting.js";
-import { cloudinary } from "../middleware/upload.js";
 
 class SlidersService {
   constructor(database) {
@@ -185,6 +185,7 @@ function pickSliderSettings(setting) {
     enabled: setting.enabled,
     autoSlide: setting.autoSlide,
     interval: setting.interval,
+    updatedAt: setting.updatedAt,
   };
 }
 
