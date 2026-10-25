@@ -662,11 +662,18 @@ export type PaymentGateway = {
   config: Record<string, any>;
 };
 
+export type SSLCommerzConfigStatus = {
+  configured: boolean;
+  mode: 'sandbox' | 'live' | null;
+};
+
 export const paymentSettingsApi = {
   getAll: () =>
-    apiFetch<{ success: boolean; gateways: PaymentGateway[] }>(
-      '/payment-settings'
-    ),
+    apiFetch<{
+      success: boolean;
+      gateways: PaymentGateway[];
+      sslcommerzConfig: SSLCommerzConfigStatus;
+    }>('/payment-settings'),
   getActive: () =>
     apiFetch<{ success: boolean; gateways: ActivePaymentGateway[] }>(
       '/payment-settings/active'
@@ -690,7 +697,6 @@ export type ActivePaymentGateway = {
 export const paymentApi = {
   initiate: (data: {
     orderId: string;
-    amount: number;
     customer: {
       name: string;
       email: string;
@@ -710,13 +716,7 @@ export const paymentApi = {
       advance?: boolean;
       message?: string;
     }>('/payment/initiate', { method: 'POST', body: data }),
-  validate: (data: {
-    tran_id: string;
-    val_id?: string;
-    status?: string;
-    amount?: number;
-    card_type?: string;
-  }) =>
+  validate: (data: { tran_id: string; val_id?: string }) =>
     apiFetch<{
       success: boolean;
       valid: boolean;
@@ -852,7 +852,12 @@ export type LoginResponse = {
 };
 
 export type OrderStatus =
-  'pending' | 'processing' | 'confirmed' | 'send_courier' | 'cancelled';
+  | 'pending'
+  | 'processing'
+  | 'confirmed'
+  | 'send_courier'
+  | 'delivered'
+  | 'cancelled';
 
 export type OrderItem = {
   product: string | { _id: string; name: string };
@@ -885,9 +890,18 @@ export type Order = {
     country: string;
   };
   totalAmount: number;
+  shippingFee: number;
   coupon?: {
     code: string;
     discount: number;
+  };
+  loyalty?: {
+    pointsRedeemed?: number;
+    discount?: number;
+    pointsEstimated?: number;
+    pointsEarned?: number;
+    eligibleSubtotal?: number;
+    refundedAmount?: number;
   };
   payment: {
     method: string;
@@ -913,6 +927,7 @@ export type OrderStats = {
   processing: number;
   confirmed: number;
   send_courier: number;
+  delivered: number;
   cancelled: number;
 };
 
@@ -975,11 +990,22 @@ export const orderApi = {
     paymentMethod: string;
     note?: string;
     couponCode?: string;
+    redeemPoints?: number;
+    deliveryMethod?: 'standard' | 'express';
   }) =>
     apiFetch<{ success: boolean; order: Order }>('/orders', {
       method: 'POST',
       body: data,
     }),
+
+  refund: (
+    id: string,
+    data: { amount: number; reason: string; idempotencyKey: string }
+  ) =>
+    apiFetch<{ success: boolean; order: Order; duplicate: boolean }>(
+      `/orders/${id}/refunds`,
+      { method: 'POST', body: data }
+    ),
 
   adminCreate: (data: {
     customerId: string;
@@ -1002,6 +1028,147 @@ export const orderApi = {
         totalAmount: number;
       };
     }>('/orders/admin-create', { method: 'POST', body: data }),
+};
+
+export type LoyaltySettings = {
+  enabled: boolean;
+  pointsPerHundred: number;
+  pointValue: number;
+  minimumRedemption: number;
+  maximumRedemptionPercent: number;
+  expirationDays: number;
+  productOverrides: {
+    productId: string;
+    pointsPerHundred: number;
+    enabled: boolean;
+  }[];
+  categoryOverrides: {
+    categoryId: string;
+    pointsPerHundred: number;
+    enabled: boolean;
+  }[];
+};
+
+export type LoyaltyTransaction = {
+  id: string;
+  orderId: string | null;
+  type: 'earn' | 'redeem' | 'restore' | 'refund' | 'adjustment' | 'expire';
+  points: number;
+  reason: string;
+  expiresAt: string | null;
+  createdAt: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type LoyaltyCustomer = {
+  _id: string;
+  name: string;
+  email: string;
+  phone: string;
+  loyaltyBalance: number;
+};
+
+export const loyaltyApi = {
+  rules: () =>
+    apiFetch<{
+      success: boolean;
+      rules: { enabled: boolean; pointsPerHundred: number; pointValue: number };
+    }>('/loyalty/rules'),
+
+  estimateProduct: (productId: string, variantId?: string) =>
+    apiFetch<{ success: boolean; enabled: boolean; points: number }>(
+      `/loyalty/products/${productId}/estimate`,
+      { params: variantId ? { variantId } : undefined }
+    ),
+
+  quote: (
+    items: { product: string; variantId?: string; quantity: number }[],
+    couponCode?: string
+  ) =>
+    apiFetch<{
+      success: boolean;
+      quote: {
+        enabled: boolean;
+        balance: number;
+        estimatedPoints: number;
+        eligibleSubtotal: number;
+        couponDiscount: number;
+        minimumRedemption: number;
+        maximumRedeemPoints: number;
+        maximumDiscount: number;
+        pointValue: number;
+      };
+    }>('/loyalty/quote', {
+      method: 'POST',
+      body: { items, couponCode },
+    }),
+
+  mine: (params?: { page?: number; limit?: number }) =>
+    apiFetch<{
+      success: boolean;
+      balance: number;
+      pendingPoints: number;
+      expiringPoints: number;
+      nextExpiration: string | null;
+      transactions: LoyaltyTransaction[];
+      total: number;
+      page: number;
+      pages: number;
+    }>('/loyalty/me', { params }),
+
+  adminSettings: () =>
+    apiFetch<{ success: boolean; settings: LoyaltySettings }>(
+      '/loyalty/admin/settings'
+    ),
+  saveSettings: (settings: LoyaltySettings) =>
+    apiFetch<{ success: boolean; settings: LoyaltySettings }>(
+      '/loyalty/admin/settings',
+      { method: 'PUT', body: settings }
+    ),
+  adminSummary: () =>
+    apiFetch<{
+      success: boolean;
+      summary: {
+        customers: number;
+        activePoints: number;
+        pointsEarned: number;
+        pointsRedeemed: number;
+        manualAdjustments: number;
+      };
+    }>('/loyalty/admin/summary'),
+  customers: (params?: { page?: number; limit?: number; search?: string }) =>
+    apiFetch<{
+      success: boolean;
+      customers: LoyaltyCustomer[];
+      total: number;
+      page: number;
+      pages: number;
+    }>('/loyalty/admin/customers', { params }),
+  customer: (id: string, params?: { page?: number; limit?: number }) =>
+    apiFetch<{
+      success: boolean;
+      customer: { _id: string; name: string; email: string; phone: string };
+      balance: number;
+      pendingPoints: number;
+      expiringPoints: number;
+      nextExpiration: string | null;
+      transactions: LoyaltyTransaction[];
+      total: number;
+      page: number;
+      pages: number;
+    }>(`/loyalty/admin/customers/${id}`, { params }),
+  adjust: (
+    id: string,
+    data: { points: number; reason: string; idempotencyKey: string }
+  ) =>
+    apiFetch<{
+      success: boolean;
+      transaction: LoyaltyTransaction;
+      balance: number;
+    }>(`/loyalty/admin/customers/${id}/adjustments`, {
+      method: 'POST',
+      body: data,
+    }),
 };
 
 export type InvoiceStatus = 'paid' | 'pending' | 'overdue' | 'cancelled';

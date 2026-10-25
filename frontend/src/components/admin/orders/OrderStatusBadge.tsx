@@ -9,6 +9,7 @@ const ORDER_STATUS_CONFIG: Record<
   processing:   { label: 'Processing',       className: 'bg-blue-100 text-blue-800 hover:bg-blue-100' },
   confirmed:    { label: 'Confirmed',        className: 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100' },
   send_courier: { label: 'Send to Courier',  className: 'bg-violet-100 text-violet-800 hover:bg-violet-100' },
+  delivered:    { label: 'Delivered',        className: 'bg-green-100 text-green-800 hover:bg-green-100' },
   cancelled:    { label: 'Cancelled',        className: 'bg-red-100 text-red-800 hover:bg-red-100' },
 };
 
@@ -57,6 +58,7 @@ export const ORDER_STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
   { value: 'processing',   label: 'Processing' },
   { value: 'confirmed',    label: 'Confirmed' },
   { value: 'send_courier', label: 'Send to Courier' },
+  { value: 'delivered',    label: 'Delivered' },
   { value: 'cancelled',    label: 'Cancelled' },
 ];
 

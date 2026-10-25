@@ -131,10 +131,11 @@ const CartContent = () => {
               animate="show"
             >
               <AnimatePresence mode="popLayout">
-                {items.map((item) => (
+                {items.map((item, index) => (
                   <CartItemCard
                     key={`${item.productId}:${item.variantId || ''}`}
                     item={item}
+                    priorityImage={index === 0}
                   />
                 ))}
               </AnimatePresence>

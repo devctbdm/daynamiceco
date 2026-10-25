@@ -75,6 +75,11 @@ export const ADMIN_NAV: AdminNavItem[] = [
     ],
   },
   {
+    title: 'Points Cms',
+    url: '#',
+    items: [{ title: 'Loyalty & Rewards', url: '/admin/loyalty' }],
+  },
+  {
     title: 'Analytics',
     url: '#',
     items: [

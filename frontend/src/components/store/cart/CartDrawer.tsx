@@ -87,7 +87,7 @@ export const CartDrawer = () => {
               <AnimatePresence mode="popLayout">
                 {items.map((item, index) => (
                   <motion.div
-                    key={item.productId}
+                    key={`${item.productId}:${item.variantId || ''}`}
                     layout
                     initial={{ opacity: 0, x: 40 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -147,7 +147,11 @@ export const CartDrawer = () => {
                             type="button"
                             whileTap={{ scale: 0.8 }}
                             onClick={() =>
-                              updateQuantity(item.productId, item.quantity - 1)
+                              updateQuantity(
+                                item.productId,
+                                item.quantity - 1,
+                                item.variantId
+                              )
                             }
                             className="flex h-7 w-7 items-center justify-center text-muted-foreground transition hover:text-foreground"
                             aria-label="Decrease quantity"
@@ -169,7 +173,11 @@ export const CartDrawer = () => {
                           <button
                             type="button"
                             onClick={() =>
-                              updateQuantity(item.productId, item.quantity + 1)
+                              updateQuantity(
+                                item.productId,
+                                item.quantity + 1,
+                                item.variantId
+                              )
                             }
                             disabled={item.quantity >= item.stock}
                             className="flex h-7 w-7 items-center justify-center text-muted-foreground transition hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
@@ -181,7 +189,9 @@ export const CartDrawer = () => {
                         <motion.button
                           type="button"
                           whileTap={{ scale: 0.8, rotate: -12 }}
-                          onClick={() => removeItem(item.productId)}
+                          onClick={() =>
+                            removeItem(item.productId, item.variantId)
+                          }
                           className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition hover:bg-red-50 hover:text-red-600"
                           aria-label={`Remove ${item.name}`}
                         >

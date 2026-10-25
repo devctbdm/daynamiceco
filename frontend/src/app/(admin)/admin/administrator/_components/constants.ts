@@ -31,6 +31,7 @@ export const MODULES = [
   { key: 'categories', label: 'Categories' },
   { key: 'orders',     label: 'Orders' },
   { key: 'customers',  label: 'Customers' },
+  { key: 'loyalty',    label: 'Loyalty & Rewards' },
   { key: 'invoices',   label: 'Invoices' },
   { key: 'reviews',    label: 'Reviews & Questions' },
   { key: 'promotions', label: 'Promotions & Promo Codes' },

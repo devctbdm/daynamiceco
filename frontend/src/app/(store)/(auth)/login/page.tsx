@@ -35,6 +35,18 @@ type FormValues = {
   password: string;
 };
 
+function getPostLoginPath(role?: string) {
+  const redirect = new URLSearchParams(window.location.search).get('redirect');
+  if (
+    redirect?.startsWith('/') &&
+    !redirect.startsWith('//') &&
+    !redirect.includes('\\')
+  ) {
+    return redirect;
+  }
+  return role === 'admin' || role === 'super_admin' ? '/admin/dashboard' : '/';
+}
+
 const initialValues: FormValues = {
   identifier: '',
   password: '',
@@ -63,11 +75,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.replace(
-        user?.role === 'admin' || user?.role === 'super_admin'
-          ? '/admin/dashboard'
-          : '/'
-      );
+      router.replace(getPostLoginPath(user?.role));
     }
   }, [isLoading, isAuthenticated, user, router]);
 
@@ -129,11 +137,7 @@ export default function LoginPage() {
 
       const role = data.user?.role || useAppStore.getState().user?.role;
       toast.success(`Welcome back, ${data.user?.name || 'User'}!`);
-      if (role === 'admin' || role === 'super_admin') {
-        router.push('/admin/dashboard');
-      } else {
-        router.push('/');
-      }
+      router.push(getPostLoginPath(role));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -155,11 +159,7 @@ export default function LoginPage() {
     await syncCartWithBackend().catch(() => {});
     const role = user?.role || useAppStore.getState().user?.role;
     toast.success(`Welcome back, ${user?.name || 'User'}!`);
-    if (role === 'admin' || role === 'super_admin') {
-      router.push('/admin/dashboard');
-    } else {
-      router.push('/');
-    }
+    router.push(getPostLoginPath(role));
   };
 
   return (

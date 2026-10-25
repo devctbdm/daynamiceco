@@ -94,6 +94,10 @@ export const createCartSlice: StateCreator<CartSlice> = (set, get) => ({
   },
 
   addItem: async (product) => {
+    if (!isAuthed()) {
+      throw new Error('Please log in to add products to your cart.');
+    }
+
     const { items } = get();
     const existingIndex = items.findIndex(
       (item) => sameCartItem(item, product.productId, product.variantId)
@@ -118,9 +122,6 @@ export const createCartSlice: StateCreator<CartSlice> = (set, get) => ({
 
     const { totalItems, totalPrice } = get().recalculateTotals(newItems);
     set({ items: newItems, totalItems, totalPrice });
-
-    // Guests stay local (persisted in localStorage). Logged-in users persist to the server.
-    if (!isAuthed()) return;
 
     try {
       const response = await apiFetch('/cart', {

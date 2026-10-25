@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { orders } from "../src/models/Order.js";
-import { serializeOrder } from "../src/orders/orders.service.js";
+import {
+  applyCouponToLoyaltyItems,
+  serializeOrder,
+} from "../src/orders/orders.service.js";
 import { migrateLegacyOrderData } from "../src/utils/orderNumber.js";
 
 test("orders use a normalized Neon table with indexed users and unique order numbers", () => {
@@ -17,7 +20,9 @@ test("orders use a normalized Neon table with indexed users and unique order num
       "items",
       "shipping_address",
       "total_amount",
+      "shipping_fee",
       "coupon",
+      "loyalty",
       "payment",
       "order_status",
       "note",
@@ -48,6 +53,7 @@ test("orders use a normalized Neon table with indexed users and unique order num
     "customer_orders_items_array_check",
     "customer_orders_order_status_check",
     "customer_orders_payment_status_check",
+    "customer_orders_shipping_fee_nonnegative",
     "customer_orders_total_nonnegative",
   ]);
 });
@@ -59,9 +65,11 @@ test("order serializer preserves the legacy API response shape", () => {
     items: [{ product: "111111111111111111111111", quantity: 2 }],
     shippingAddress: { street: "Main Street" },
     totalAmount: 1000,
+    shippingFee: 0,
     coupon: { code: "", discount: 0 },
     payment: { method: "cod", status: "pending" },
     orderStatus: "pending",
+    loyalty: {},
     note: "",
     orderNumber: "#1",
     advanceAmount: 0,
@@ -77,7 +85,9 @@ test("order serializer preserves the legacy API response shape", () => {
     items: row.items,
     shippingAddress: row.shippingAddress,
     totalAmount: 1000,
+    shippingFee: 0,
     coupon: row.coupon,
+    loyalty: {},
     payment: row.payment,
     orderStatus: "pending",
     note: "",
@@ -88,6 +98,18 @@ test("order serializer preserves the legacy API response shape", () => {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
+});
+
+test("coupon discounts are proportionally applied to loyalty-eligible item prices", () => {
+  const items = [
+    { product: { _id: "eligible" }, price: 600, quantity: 1 },
+    { product: { _id: "excluded" }, price: 400, quantity: 1 },
+  ];
+
+  assert.deepEqual(applyCouponToLoyaltyItems(items, 1000, 100), [
+    { product: { _id: "eligible" }, price: 540, quantity: 1 },
+    { product: { _id: "excluded" }, price: 360, quantity: 1 },
+  ]);
 });
 
 test("legacy order normalization runs against Neon without Mongoose", async () => {

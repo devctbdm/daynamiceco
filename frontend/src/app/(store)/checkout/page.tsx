@@ -26,6 +26,7 @@ import { useAuth, useCart, useCheckout, useUI } from '@/store';
 import {
   authApi,
   orderApi,
+  loyaltyApi,
   paymentApi,
   paymentSettingsApi,
   promoApi,
@@ -37,6 +38,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Skeleton } from '@/components/ui/skeleton';
 import RequireAuth from '@/components/store/layout/RequireAuth';
 import { useStoreStatus } from '@/components/store/StoreStatusProvider';
 
@@ -87,6 +89,17 @@ const CheckoutContent = () => {
     description?: string;
   } | null>(null);
   const [couponLoading, setCouponLoading] = useState(false);
+  const [loyaltyQuote, setLoyaltyQuote] = useState<{
+    enabled: boolean;
+    balance: number;
+    estimatedPoints: number;
+    minimumRedemption: number;
+    maximumRedeemPoints: number;
+    pointValue: number;
+  } | null>(null);
+  const [loyaltyLoading, setLoyaltyLoading] = useState(false);
+  const [usePoints, setUsePoints] = useState(false);
+  const [redeemInput, setRedeemInput] = useState('');
 
   const [deliveryMethod, setDeliveryMethod] =
     useState<DeliveryValue>('standard');
@@ -144,13 +157,57 @@ const CheckoutContent = () => {
     [addresses, selectedAddressId]
   );
 
+  useEffect(() => {
+    if (!isAuthenticated || items.length === 0) {
+      setLoyaltyQuote(null);
+      return;
+    }
+    let cancelled = false;
+    setLoyaltyLoading(true);
+    loyaltyApi
+      .quote(
+        items.map((item) => ({
+          product: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+        })),
+        appliedCoupon?.code
+      )
+      .then(({ data }) => {
+        if (!cancelled) setLoyaltyQuote(data.quote);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLoyaltyQuote(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoyaltyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, items, appliedCoupon?.code]);
+
   const subtotal = totalPrice;
   const couponDiscount = appliedCoupon?.discount || 0;
+  const requestedPoints = usePoints ? Number(redeemInput) : 0;
+  const maxRedeemPoints = loyaltyQuote
+    ? Math.min(loyaltyQuote.balance, loyaltyQuote.maximumRedeemPoints)
+    : 0;
+  const redemptionValid =
+    Number.isSafeInteger(requestedPoints) &&
+    requestedPoints >= (loyaltyQuote?.minimumRedemption ?? 0) &&
+    requestedPoints <= maxRedeemPoints;
+  const loyaltyDiscount =
+    redemptionValid && loyaltyQuote
+      ? Math.round(requestedPoints * loyaltyQuote.pointValue * 100) / 100
+      : 0;
   const deliveryCost =
     appliedCoupon?.type === 'free_shipping'
       ? 0
       : DELIVERY_METHODS.find((d) => d.value === deliveryMethod)?.cost || 0;
-  const grandTotal = subtotal - couponDiscount + deliveryCost;
+  const grandTotal = Math.max(0, subtotal - couponDiscount - loyaltyDiscount) + deliveryCost;
 
   const handleApplyCoupon = async () => {
     const code = couponInput.trim().toUpperCase();
@@ -219,6 +276,15 @@ const CheckoutContent = () => {
       );
       return;
     }
+    if (
+      usePoints &&
+      (!loyaltyQuote?.enabled ||
+        !redemptionValid ||
+        requestedPoints <= 0)
+    ) {
+      setOrderError('Enter a valid points amount within your available balance and order limit.');
+      return;
+    }
 
     setPlacing(true);
     try {
@@ -273,6 +339,8 @@ const CheckoutContent = () => {
           paymentMethod,
           note: notes,
           couponCode: appliedCoupon?.code,
+          redeemPoints: usePoints ? requestedPoints : 0,
+          deliveryMethod,
         });
         orderId = data.order._id;
         if (paymentMethod === 'sslcommerz' && typeof window !== 'undefined') {
@@ -294,7 +362,6 @@ const CheckoutContent = () => {
         try {
           const payRes = await paymentApi.initiate({
             orderId,
-            amount: grandTotal,
             customer,
           });
           if (payRes.data.success && payRes.data.gatewayUrl) {
@@ -830,6 +897,58 @@ const CheckoutContent = () => {
               </AnimatePresence>
             </div>
 
+            {loyaltyQuote?.enabled && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    checked={usePoints}
+                    onCheckedChange={(checked) => {
+                      setUsePoints(checked === true);
+                      if (checked !== true) setRedeemInput('');
+                    }}
+                    className="mt-0.5"
+                    aria-label="Redeem loyalty points"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-amber-900">
+                      Redeem reward points
+                    </p>
+                    {loyaltyLoading ? (
+                      <Skeleton className="mt-2 h-4 w-40" />
+                    ) : (
+                      <p className="mt-1 text-xs text-amber-800">
+                        {loyaltyQuote.balance.toLocaleString()} available · up to{' '}
+                        {maxRedeemPoints.toLocaleString()} can be used on this order
+                      </p>
+                    )}
+                    {usePoints && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={loyaltyQuote.minimumRedemption}
+                          max={maxRedeemPoints}
+                          step={1}
+                          value={redeemInput}
+                          onChange={(event) => setRedeemInput(event.target.value)}
+                          placeholder={`Min ${loyaltyQuote.minimumRedemption}`}
+                          className="h-9 bg-white"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={maxRedeemPoints < loyaltyQuote.minimumRedemption}
+                          onClick={() => setRedeemInput(String(maxRedeemPoints))}
+                        >
+                          Max
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Sub-total */}
             <div className="mt-5 space-y-3 border-t border-gray-200 pt-4 text-sm">
               <div className="flex items-center justify-between">
@@ -880,6 +999,16 @@ const CheckoutContent = () => {
                   </motion.div>
                 )}
               </AnimatePresence>
+              {loyaltyDiscount > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500">
+                    Rewards ({requestedPoints.toLocaleString()} points)
+                  </span>
+                  <span className="font-semibold text-green-600">
+                    -৳{loyaltyDiscount.toLocaleString()}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <span className="text-gray-500">Delivery fee</span>
                 <span className="font-medium text-gray-900">

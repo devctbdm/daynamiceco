@@ -33,12 +33,18 @@ import {
 } from "../services/emailService.js";
 import { notifyOrderStatusChange } from "../services/smsService.js";
 import { createNotification } from "../services/notificationService.js";
+import {
+  estimateEarnedPoints,
+  getEligibleSubtotal,
+  LoyaltyService,
+} from "../loyalty/loyalty.service.js";
 
 const ORDER_STATUSES = [
   "pending",
   "processing",
   "confirmed",
   "send_courier",
+  "delivered",
   "cancelled",
 ];
 const PAYMENT_METHODS = [
@@ -52,8 +58,9 @@ const PAYMENT_METHODS = [
 const PAYMENT_STATUSES = ["pending", "paid", "failed", "cancelled"];
 
 class OrdersService {
-  constructor(database) {
+  constructor(database, loyaltyService) {
     this.database = database;
+    this.loyaltyService = loyaltyService;
   }
 
   async create(user, input) {
@@ -64,22 +71,74 @@ class OrdersService {
     let totalAmount;
     try {
       coupon = await this.applyCoupon(input?.couponCode, prepared);
-      totalAmount = Math.max(0, prepared.subtotal - coupon.discount);
-      order = await this.insertOrder({
-        userId: String(user._id ?? user.id),
-        items: prepared.items,
-        shippingAddress: input.shippingAddress,
-        totalAmount,
-        coupon: { code: coupon.code, discount: coupon.discount },
-        payment: {
-          method: input?.paymentMethod || "sslcommerz",
-          status: "pending",
-        },
-        orderStatus: "pending",
-        note: String(input?.note || "")
-          .trim()
-          .slice(0, 500),
-        orderNumber: await getNextOrderNumber(),
+      const deliveryMethod = input?.deliveryMethod || "standard";
+      if (!["standard", "express"].includes(deliveryMethod)) {
+        throw new BadRequestException({
+          success: false,
+          message: "Invalid delivery method",
+        });
+      }
+      const shippingFee =
+        coupon.promo?.type === "free_shipping"
+          ? 0
+          : deliveryMethod === "express"
+            ? 100
+            : 0;
+      const orderId = randomBytes(12).toString("hex");
+      const settings = await this.loyaltyService.getSettings();
+      const earningItems = applyCouponToLoyaltyItems(
+        prepared.loyaltyItems,
+        prepared.subtotal,
+        coupon.discount,
+      );
+      const eligibleSubtotal = getEligibleSubtotal(earningItems, settings);
+      const pointsEstimated = settings.enabled
+        ? estimateEarnedPoints(earningItems, settings)
+        : 0;
+      order = await this.database.transaction(async (tx) => {
+        const redemption = await this.loyaltyService.createRedemption(tx, {
+          customerId: String(user._id ?? user.id),
+          orderId,
+          points: input?.redeemPoints ?? 0,
+          eligibleSubtotal,
+          settings,
+        });
+        totalAmount = Math.max(
+          0,
+          prepared.subtotal -
+            coupon.discount -
+            redemption.discount +
+            shippingFee,
+        );
+        return this.insertOrder(
+          {
+            userId: String(user._id ?? user.id),
+            items: prepared.items,
+            shippingAddress: input.shippingAddress,
+            totalAmount,
+            shippingFee,
+            coupon: { code: coupon.code, discount: coupon.discount },
+            loyalty: {
+              pointsRedeemed: redemption.points,
+              discount: redemption.discount,
+              pointsEstimated,
+              pointsEarned: 0,
+              eligibleSubtotal,
+              refundedAmount: 0,
+            },
+            payment: {
+              method: input?.paymentMethod || "sslcommerz",
+              status: "pending",
+            },
+            orderStatus: "pending",
+            note: String(input?.note || "")
+              .trim()
+              .slice(0, 500),
+            orderNumber: await getNextOrderNumber(),
+          },
+          tx,
+          orderId,
+        );
       });
     } catch (error) {
       await this.restoreStock(prepared.deducted);
@@ -152,30 +211,69 @@ class OrdersService {
         0,
         prepared.subtotal - coupon.discount + shippingFee,
       );
-      order = await this.insertOrder({
-        userId: String(customer._id),
-        items: prepared.items,
-        shippingAddress: {
-          fullName: address.fullName || customer.name || "",
-          phone: address.phone || customer.phone || "",
-          street: address.street,
-          city: address.city,
-          state: address.state,
-          postcode: address.postcode,
-          country: address.country || "Bangladesh",
-        },
-        totalAmount,
-        coupon: { code: coupon.code, discount: coupon.discount },
-        payment: {
-          method,
-          status: paymentStatus,
-          ...(paymentStatus === "paid" ? { paidAt: new Date() } : {}),
-        },
-        orderStatus,
-        note: String(input.note || "")
-          .trim()
-          .slice(0, 500),
-        orderNumber: await getNextOrderNumber(),
+      const settings = await this.loyaltyService.getSettings();
+      const earningItems = applyCouponToLoyaltyItems(
+        prepared.loyaltyItems,
+        prepared.subtotal,
+        coupon.discount,
+      );
+      const eligibleSubtotal = getEligibleSubtotal(earningItems, settings);
+      const orderId = randomBytes(12).toString("hex");
+      order = await this.database.transaction(async (tx) => {
+        let created = await this.insertOrder(
+          {
+            userId: String(customer._id),
+            items: prepared.items,
+            shippingAddress: {
+              fullName: address.fullName || customer.name || "",
+              phone: address.phone || customer.phone || "",
+              street: address.street,
+              city: address.city,
+              state: address.state,
+              postcode: address.postcode,
+              country: address.country || "Bangladesh",
+            },
+            totalAmount,
+            shippingFee,
+            coupon: { code: coupon.code, discount: coupon.discount },
+            loyalty: {
+              pointsRedeemed: 0,
+              discount: 0,
+              pointsEstimated: settings.enabled
+                ? estimateEarnedPoints(earningItems, settings)
+                : 0,
+              pointsEarned: 0,
+              eligibleSubtotal,
+              refundedAmount: 0,
+            },
+            payment: {
+              method,
+              status: paymentStatus,
+              ...(paymentStatus === "paid" ? { paidAt: new Date() } : {}),
+            },
+            orderStatus,
+            note: String(input.note || "")
+              .trim()
+              .slice(0, 500),
+            orderNumber: await getNextOrderNumber(),
+          },
+          tx,
+          orderId,
+        );
+        if (orderStatus === "delivered") {
+          const pointsEarned = await this.loyaltyService.awardDeliveredOrder(
+            tx,
+            { ...created, id: orderId, userId: String(customer._id) },
+            settings,
+          );
+          if (pointsEarned) {
+            created = await this.updateLoyalty(tx, orderId, {
+              ...created.loyalty,
+              pointsEarned,
+            });
+          }
+        }
+        return created;
       });
     } catch (error) {
       await this.restoreStock(prepared.deducted);
@@ -295,6 +393,7 @@ class OrdersService {
       processing: 0,
       confirmed: 0,
       send_courier: 0,
+      delivered: 0,
       cancelled: 0,
     };
     for (const row of rows) {
@@ -311,10 +410,44 @@ class OrdersService {
         message: `Invalid status. Must be one of: ${ORDER_STATUSES.join(", ")}`,
       });
     }
-    const order = await this.findById(id);
-    if (!order) return null;
-    const previousStatus = order.orderStatus;
-    const updated = await this.update(id, { orderStatus: status });
+    const settings = await this.loyaltyService.getSettings();
+    const result = await this.database.transaction(async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(customerOrders)
+        .where(eq(customerOrders.id, id))
+        .for("update")
+        .limit(1);
+      if (!row) return null;
+      const order = serializeOrder(row);
+      const previousStatus = order.orderStatus;
+      if (previousStatus === status) return { order, previousStatus };
+      if (status === "cancelled") {
+        await this.loyaltyService.cancelOrderPoints(tx, {
+          ...order,
+          id: row.id,
+          userId: row.userId,
+        });
+      }
+      let loyalty = order.loyalty;
+      if (status === "delivered") {
+        const pointsEarned = await this.loyaltyService.awardDeliveredOrder(
+          tx,
+          { ...order, id: row.id, userId: row.userId },
+          settings,
+        );
+        if (pointsEarned) loyalty = { ...loyalty, pointsEarned };
+      }
+      const [updatedRow] = await tx
+        .update(customerOrders)
+        .set({ orderStatus: status, loyalty, updatedAt: new Date() })
+        .where(eq(customerOrders.id, id))
+        .returning();
+      return { order: serializeOrder(updatedRow), previousStatus };
+    });
+    if (!result) return null;
+    const { order, previousStatus } = result;
+    const updated = await this.populateUser(order);
     if (status === "cancelled" && previousStatus !== "cancelled") {
       await this.restoreStock(
         order.items.map((item) => ({
@@ -359,6 +492,53 @@ class OrdersService {
       });
     }
     return updated;
+  }
+
+  async refundOrder(id, input, actor) {
+    await this.loyaltyService.assertPermission(actor, "manage");
+    const amount = Number(input?.amount);
+    const reason = String(input?.reason ?? "").trim();
+    const idempotencyKey = String(input?.idempotencyKey ?? "").trim();
+    if (
+      !/^[\w:.-]{8,150}$/.test(idempotencyKey) ||
+      reason.length < 3 ||
+      reason.length > 500
+    ) {
+      throw new BadRequestException({
+        success: false,
+        message: "A valid idempotency key and refund reason are required",
+      });
+    }
+    const result = await this.database.transaction(async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(customerOrders)
+        .where(eq(customerOrders.id, id))
+        .for("update")
+        .limit(1);
+      if (!row) return null;
+      const order = serializeOrder(row);
+      const refund = await this.loyaltyService.recordRefund(
+        tx,
+        { ...order, id: row.id, userId: row.userId },
+        amount,
+        idempotencyKey,
+        reason,
+        String(actor._id ?? actor.id),
+      );
+      if (refund.duplicate) return { order, duplicate: true };
+      const [updatedRow] = await tx
+        .update(customerOrders)
+        .set({ loyalty: refund.loyalty, updatedAt: new Date() })
+        .where(eq(customerOrders.id, id))
+        .returning();
+      return { order: serializeOrder(updatedRow), duplicate: false };
+    });
+    if (!result) return null;
+    return {
+      order: await this.populateUser(result.order),
+      duplicate: result.duplicate,
+    };
   }
 
   async updatePaymentStatus(id, inputStatus) {
@@ -445,6 +625,16 @@ class OrdersService {
     return row ? serializeOrder(row) : null;
   }
 
+  async updateLoyalty(database, id, loyalty) {
+    const [row] = await database
+      .update(customerOrders)
+      .set({ loyalty, updatedAt: new Date() })
+      .where(eq(customerOrders.id, id))
+      .returning();
+    if (!row) throw new Error("Failed to update order loyalty");
+    return serializeOrder(row);
+  }
+
   async findByTransactionId(transactionId) {
     const [row] = await this.database
       .select()
@@ -454,10 +644,14 @@ class OrdersService {
     return row ? serializeOrder(row) : null;
   }
 
-  async insertOrder(values) {
-    const [row] = await this.database
+  async insertOrder(
+    values,
+    database = this.database,
+    id = randomBytes(12).toString("hex"),
+  ) {
+    const [row] = await database
       .insert(customerOrders)
-      .values({ id: randomBytes(12).toString("hex"), ...values })
+      .values({ id, ...values })
       .returning();
     if (!row) throw new Error("Failed to create order");
     return serializeOrder(row);
@@ -501,6 +695,7 @@ class OrdersService {
     }
     const items = [];
     const promoItems = [];
+    const loyaltyItems = [];
     const deducted = [];
     let subtotal = 0;
     try {
@@ -560,6 +755,15 @@ class OrdersService {
           price,
           quantity,
         });
+        loyaltyItems.push({
+          product: {
+            _id: String(product._id),
+            category: product.category,
+            categories: product.categories,
+          },
+          price,
+          quantity,
+        });
         const stockUpdated = variant
           ? await changeProductVariantStock(
               product._id,
@@ -590,7 +794,7 @@ class OrdersService {
       await this.restoreStock(deducted);
       throw error;
     }
-    return { items, promoItems, subtotal, deducted };
+    return { items, promoItems, loyaltyItems, subtotal, deducted };
   }
 
   async applyCoupon(code, prepared) {
@@ -635,7 +839,12 @@ class OrdersService {
           this.database,
         );
       } else {
-        await changeProductStock(item.product, item.quantity, {}, this.database);
+        await changeProductStock(
+          item.product,
+          item.quantity,
+          {},
+          this.database,
+        );
       }
     }
   }
@@ -687,6 +896,17 @@ function validNonnegative(value, message) {
   return number;
 }
 
+function applyCouponToLoyaltyItems(items, subtotal, discount) {
+  const scale =
+    subtotal > 0
+      ? Math.max(0, (subtotal - Math.max(0, Number(discount) || 0)) / subtotal)
+      : 0;
+  return items.map((item) => ({
+    ...item,
+    price: item.price * scale,
+  }));
+}
+
 function validateShippingAddress(address) {
   if (
     !address ||
@@ -709,7 +929,9 @@ function serializeOrder(row) {
     items: row.items || [],
     shippingAddress: row.shippingAddress || {},
     totalAmount: row.totalAmount,
+    shippingFee: Number(row.shippingFee ?? 0),
     coupon: row.coupon || { code: "", discount: 0 },
+    loyalty: row.loyalty || {},
     payment: row.payment || { method: "sslcommerz", status: "pending" },
     orderStatus: row.orderStatus,
     note: row.note,
@@ -765,7 +987,9 @@ async function persistOrder(order) {
       items: order.items,
       shippingAddress: order.shippingAddress,
       totalAmount: Number(order.totalAmount),
+      shippingFee: Number(order.shippingFee ?? 0),
       coupon: order.coupon,
+      loyalty: order.loyalty ?? {},
       payment: order.payment,
       orderStatus: order.orderStatus,
       note: order.note ?? "",
@@ -783,11 +1007,13 @@ async function persistOrder(order) {
 
 Injectable()(OrdersService);
 Inject(DATABASE)(OrdersService, undefined, 0);
+Inject(LoyaltyService)(OrdersService, undefined, 1);
 
 export {
   findOrderById,
   findOrderByTranId,
   findAllOrdersForReporting,
+  applyCouponToLoyaltyItems,
   OrdersService,
   persistOrder,
   serializeOrder,

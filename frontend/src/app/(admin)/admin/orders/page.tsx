@@ -108,6 +108,7 @@ export default function OrdersPage() {
     processing: number;
     confirmed: number;
     send_courier: number;
+    delivered: number;
     cancelled: number;
   } | null>(null);
   const [query, setQuery] = useState('');
@@ -502,6 +503,7 @@ export default function OrdersPage() {
               <SelectItem value="processing">Processing</SelectItem>
               <SelectItem value="confirmed">Confirmed</SelectItem>
               <SelectItem value="send_courier">Send To Courier</SelectItem>
+              <SelectItem value="delivered">Delivered</SelectItem>
               <SelectItem value="cancelled">Cancelled</SelectItem>
             </SelectContent>
           </Select>
@@ -934,6 +936,7 @@ export default function OrdersPage() {
                   <SelectItem value="processing">Processing</SelectItem>
                   <SelectItem value="confirmed">Confirmed</SelectItem>
                   <SelectItem value="send_courier">Send To Courier</SelectItem>
+                  <SelectItem value="delivered">Delivered</SelectItem>
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>

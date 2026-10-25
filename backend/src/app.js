@@ -245,6 +245,7 @@ const NEST_HANDLED_PREFIXES = [
   "/api/home-content",
   "/api/home-slider-texts",
   "/api/maintenance",
+  "/api/loyalty",
   "/api/notifications",
   "/api/offers",
   "/api/orders",

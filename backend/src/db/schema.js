@@ -7,6 +7,8 @@ import { homePageContent } from "../models/HomeContent.js";
 import { homeSliderSettings } from "../models/HomeSliderSetting.js";
 import { homeSliderTextEntries } from "../models/HomeSliderText.js";
 import { maintenanceSetting } from "../models/MaintenanceSetting.js";
+import { loyaltySettings } from "../models/LoyaltySettings.js";
+import { loyaltyTransactions } from "../models/LoyaltyTransaction.js";
 import { notificationEntries } from "../models/Notification.js";
 import { offerEntries } from "../models/Offer.js";
 import { orders as customerOrders } from "../models/Order.js";
@@ -38,6 +40,8 @@ export {
   homeSliderSettings,
   homeSliderTextEntries,
   maintenanceSetting,
+  loyaltySettings,
+  loyaltyTransactions,
   notificationEntries,
   offerEntries,
   permissionGroupEntries,

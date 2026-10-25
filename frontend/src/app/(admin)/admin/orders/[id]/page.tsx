@@ -156,6 +156,9 @@ export default function OrderDetailPage() {
 
   // ── SSLCommerz sync ─────────────────────────────────────────────────────────
   const [syncing, setSyncing] = useState(false);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState('');
+  const [savingRefund, setSavingRefund] = useState(false);
 
   // ── Fetch ────────────────────────────────────────────────────────────────────
   const fetchOrder = useCallback(async () => {
@@ -262,6 +265,35 @@ export default function OrderDetailPage() {
     }
   };
 
+  const handleRecordRefund = async () => {
+    if (!order) return;
+    const amount = Number(refundAmount);
+    if (!Number.isFinite(amount) || amount <= 0 || refundReason.trim().length < 3) {
+      toast.error('Enter a valid refund amount and reason');
+      return;
+    }
+    setSavingRefund(true);
+    try {
+      const { data } = await orderApi.refund(order._id, {
+        amount,
+        reason: refundReason.trim(),
+        idempotencyKey: crypto.randomUUID(),
+      });
+      setOrder(data.order);
+      setRefundAmount('');
+      setRefundReason('');
+      toast.success(data.duplicate ? 'Refund already recorded' : 'Refund recorded');
+    } catch (error) {
+      const responseMessage =
+        typeof error === 'object' && error && 'response' in error
+          ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(responseMessage || 'Unable to record refund');
+    } finally {
+      setSavingRefund(false);
+    }
+  };
+
   const handlePrint = () => {
     if (!order) return;
     const cust = getCustomer(order);
@@ -287,6 +319,8 @@ export default function OrderDetailPage() {
       <div style="text-align:right;margin-top:16px">
         <div class="muted">Subtotal: ৳${itemsSubtotal.toLocaleString()}</div>
         ${order.coupon?.discount ? `<div class="muted">Coupon (${order.coupon.code}): -৳${order.coupon.discount.toLocaleString()}</div>` : ''}
+        ${order.loyalty?.discount ? `<div class="muted">Reward points: -৳${order.loyalty.discount.toLocaleString()}</div>` : ''}
+        ${order.shippingFee ? `<div class="muted">Delivery: ৳${order.shippingFee.toLocaleString()}</div>` : ''}
         <div style="font-size:18px;font-weight:700;margin-top:4px">Total: ৳${order.totalAmount.toLocaleString()}</div>
       </div>
       <div class="footer">Thank you for your order.</div>
@@ -297,7 +331,8 @@ export default function OrderDetailPage() {
   // ── Computed ──────────────────────────────────────────────────────────────────
   const itemsSubtotal = order?.items.reduce((s, i) => s + i.price * i.quantity, 0) ?? 0;
   const couponDiscount = order?.coupon?.discount ?? 0;
-  const shippingFee = order ? order.totalAmount - itemsSubtotal + couponDiscount : 0;
+  const loyaltyDiscount = order?.loyalty?.discount ?? 0;
+  const shippingFee = order?.shippingFee ?? 0;
   const amountDue = order ? order.totalAmount - (order.advancePaid ?? 0) : 0;
   const cust = order ? getCustomer(order) : null;
 
@@ -409,6 +444,14 @@ export default function OrderDetailPage() {
                       <div className="flex justify-between text-green-700">
                         <span>Coupon ({order.coupon?.code})</span>
                         <span>-{fmt(couponDiscount)}</span>
+                      </div>
+                    )}
+                    {loyaltyDiscount > 0 && (
+                      <div className="flex justify-between text-green-700">
+                        <span>
+                          Rewards ({order.loyalty?.pointsRedeemed ?? 0} points)
+                        </span>
+                        <span>-{fmt(loyaltyDiscount)}</span>
                       </div>
                     )}
                     {shippingFee > 0 && (
@@ -627,6 +670,66 @@ export default function OrderDetailPage() {
                 </CardContent>
               </Card>
 
+              {/* Refund and reward adjustments */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Refund &amp; rewards</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Points redeemed</span>
+                    <span>{(order.loyalty?.pointsRedeemed ?? 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Points earned</span>
+                    <span>{(order.loyalty?.pointsEarned ?? 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Refunds recorded</span>
+                    <span>{fmt(order.loyalty?.refundedAmount ?? 0)}</span>
+                  </div>
+                  {canEdit && (
+                    <div className="space-y-2 border-t pt-3">
+                      <Label htmlFor="refund-amount">Record refund amount (৳)</Label>
+                      <Input
+                        id="refund-amount"
+                        type="number"
+                        min={0.01}
+                        max={Math.max(
+                          0,
+                          order.totalAmount - (order.loyalty?.refundedAmount ?? 0)
+                        )}
+                        step={0.01}
+                        value={refundAmount}
+                        onChange={(event) => setRefundAmount(event.target.value)}
+                        placeholder="0.00"
+                      />
+                      <Label htmlFor="refund-reason">Reason</Label>
+                      <Textarea
+                        id="refund-reason"
+                        value={refundReason}
+                        onChange={(event) => setRefundReason(event.target.value)}
+                        maxLength={500}
+                        rows={2}
+                        placeholder="Reason for the refund"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full"
+                        onClick={handleRecordRefund}
+                        disabled={savingRefund}
+                      >
+                        {savingRefund ? 'Recording…' : 'Record refund'}
+                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        Records the refund and adjusts points; payment is not sent by this action.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
               {/* COD Advance */}
               <Card>
                 <CardHeader className="pb-3">
@@ -739,7 +842,10 @@ export default function OrderDetailPage() {
           </DialogHeader>
           <div className="grid gap-1.5 py-2">
             <Label>Payment status</Label>
-            <Select value={editPayStatus} onValueChange={setEditPayStatus}>
+            <Select
+              value={editPayStatus}
+              onValueChange={(value) => value && setEditPayStatus(value)}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

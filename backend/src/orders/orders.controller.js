@@ -85,6 +85,16 @@ class OrdersController {
     return { success: true, order };
   }
 
+  async refund(id, body, request) {
+    const result = await this.ordersService.refundOrder(
+      id,
+      body ?? {},
+      request.user,
+    );
+    if (!result) throw orderNotFound();
+    return { success: true, ...result };
+  }
+
   async adminCreate(request, body) {
     const result = await this.ordersService.createForCustomer(
       request.user,
@@ -219,5 +229,19 @@ UseGuards(LegacyAdminGuard)(
 );
 Param("id")(OrdersController.prototype, "updateAdvance", 0);
 Body()(OrdersController.prototype, "updateAdvance", 1);
+
+Post(":id/refunds")(
+  OrdersController.prototype,
+  "refund",
+  Object.getOwnPropertyDescriptor(OrdersController.prototype, "refund"),
+);
+UseGuards(LegacyAdminGuard)(
+  OrdersController.prototype,
+  "refund",
+  Object.getOwnPropertyDescriptor(OrdersController.prototype, "refund"),
+);
+Param("id")(OrdersController.prototype, "refund", 0);
+Body()(OrdersController.prototype, "refund", 1);
+Req()(OrdersController.prototype, "refund", 2);
 
 export { OrdersController };

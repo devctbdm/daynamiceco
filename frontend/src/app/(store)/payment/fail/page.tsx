@@ -62,7 +62,6 @@ function FailContent() {
       const res = await orderApi.getById(orderId);
       const o = res.data.order;
       const isAdvance = !!tran_id?.includes('_adv_');
-      const amount = o.payment?.amount ?? o.totalAmount;
       const u = typeof o.user === 'object' && o.user ? o.user : null;
       const customer = {
         name: u?.name || '',
@@ -73,7 +72,11 @@ function FailContent() {
         state: o.shippingAddress?.state || '',
         postcode: o.shippingAddress?.postcode || '',
       };
-      const payRes = await paymentApi.initiate({ orderId, amount, customer, advance: isAdvance });
+      const payRes = await paymentApi.initiate({
+        orderId,
+        customer,
+        advance: isAdvance,
+      });
       if (payRes.data.success && payRes.data.gatewayUrl) {
         window.location.href = payRes.data.gatewayUrl;
         return;
@@ -94,7 +97,7 @@ function FailContent() {
     (async () => {
       try {
         if (tran_id) {
-          await paymentApi.validate({ tran_id, val_id, status: 'FAILED' }).catch(() => {});
+          await paymentApi.validate({ tran_id, val_id }).catch(() => {});
         }
         if (orderId) {
           const res = await orderApi.getById(orderId);

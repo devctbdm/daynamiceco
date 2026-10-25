@@ -51,7 +51,7 @@ function CancellationContent() {
       try {
         if (tran_id) {
           await paymentApi.cancel({ tran_id }).catch(async () => {
-            await paymentApi.validate({ tran_id, val_id, status: 'CANCELLED' }).catch(() => {});
+            await paymentApi.validate({ tran_id, val_id }).catch(() => {});
           });
         }
         if (orderId) {

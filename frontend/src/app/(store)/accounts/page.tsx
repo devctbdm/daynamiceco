@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   XCircle,
   ShoppingBag,
+  Award,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -68,11 +69,23 @@ import {
 import Link from 'next/link';
 import { useWishlist, useCart, useAuth } from '@/store';
 import { useStoreStatus } from '@/components/store/StoreStatusProvider';
-import { authApi, orderApi, paymentApi, SavedAddress } from '@/lib/api';
+import {
+  authApi,
+  loyaltyApi,
+  orderApi,
+  paymentApi,
+  SavedAddress,
+  type LoyaltyTransaction,
+} from '@/lib/api';
 import RequireAuth from '@/components/store/layout/RequireAuth';
 
 type OrderStatus =
-  'pending' | 'processing' | 'confirmed' | 'send_courier' | 'cancelled';
+  | 'pending'
+  | 'processing'
+  | 'confirmed'
+  | 'send_courier'
+  | 'delivered'
+  | 'cancelled';
 type OrderItem = {
   name: string;
   price: number;
@@ -85,10 +98,16 @@ type Order = {
   id: string;
   date: string;
   total: number;
+  shippingFee?: number;
   status: OrderStatus;
   items: OrderItem[];
   orderNumber?: string;
   coupon?: { code: string; discount: number };
+  loyalty?: {
+    pointsRedeemed?: number;
+    discount?: number;
+    pointsEarned?: number;
+  };
   payment?: {
     method: string;
     status: string;
@@ -191,6 +210,11 @@ const statusMeta: Record<
     className: 'bg-violet-100 text-violet-800',
     Icon: Truck,
   },
+  delivered: {
+    label: 'Delivered',
+    className: 'bg-green-100 text-green-800',
+    Icon: CheckCircle2,
+  },
   cancelled: {
     label: 'Cancelled',
     className: 'bg-rose-100 text-rose-800',
@@ -219,6 +243,7 @@ const ORDER_STAGES = [
   'processing',
   'confirmed',
   'send_courier',
+  'delivered',
 ] as const;
 type Stage = (typeof ORDER_STAGES)[number];
 
@@ -309,6 +334,11 @@ function buildTimeline(o: Order, phone?: string): TimelineStep[] {
     description: 'Order handed to the courier for delivery.',
     state: reached('send_courier') ? 'done' : 'upcoming',
   });
+  steps.push({
+    title: 'Delivered',
+    description: 'Your order has been delivered.',
+    state: reached('delivered') ? 'done' : 'upcoming',
+  });
 
   return steps;
 }
@@ -354,6 +384,18 @@ function AccountContent() {
   const [viewOrder, setViewOrder] = useState<Order | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [addressesLoading, setAddressesLoading] = useState(true);
+  const [rewards, setRewards] = useState<{
+    balance: number;
+    pendingPoints: number;
+    expiringPoints: number;
+    nextExpiration: string | null;
+    transactions: LoyaltyTransaction[];
+    total: number;
+    pages: number;
+  } | null>(null);
+  const [rewardsLoading, setRewardsLoading] = useState(true);
+  const [rewardsPage, setRewardsPage] = useState(1);
+  const isCustomer = user?.role === 'customer';
   const { wishlist: wishItems, removeFromWishlist } = useWishlist();
   const { addItem } = useCart();
   const { buyingEnabled, sellingMessage } = useStoreStatus();
@@ -399,9 +441,11 @@ function AccountContent() {
               id: o._id,
               date: o.createdAt,
               total: o.totalAmount,
+              shippingFee: o.shippingFee,
               orderNumber: o.orderNumber,
               status: o.orderStatus,
               coupon: o.coupon,
+              loyalty: o.loyalty,
               payment: o.payment,
               advanceAmount: o.advanceAmount,
               advancePaid: o.advancePaid,
@@ -421,6 +465,39 @@ function AccountContent() {
       .catch(() => toast.error('Failed to load orders'))
       .finally(() => setOrdersLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!isCustomer) {
+      setRewardsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setRewardsLoading(true);
+    loyaltyApi
+      .mine({ page: rewardsPage, limit: 10 })
+      .then(({ data }) => {
+        if (cancelled) return;
+        setRewards({
+          balance: data.balance,
+          pendingPoints: data.pendingPoints,
+          expiringPoints: data.expiringPoints,
+          nextExpiration: data.nextExpiration,
+          transactions: data.transactions,
+          total: data.total,
+          pages: data.pages,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('Failed to load reward points');
+      })
+      .finally(() => {
+        if (!cancelled) setRewardsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isCustomer, rewardsPage]);
 
   const totalOrderPages = Math.max(
     1,
@@ -524,7 +601,6 @@ function AccountContent() {
       };
       const { data } = await paymentApi.initiate({
         orderId: o.id,
-        amount: o.advanceAmount,
         customer,
         advance: true,
       });
@@ -610,7 +686,7 @@ function AccountContent() {
 
         {/* Tabs */}
         <Tabs defaultValue="orders" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
             <TabsTrigger value="orders">
               <Package className="mr-2 h-4 w-4" /> Orders
             </TabsTrigger>
@@ -622,6 +698,9 @@ function AccountContent() {
             </TabsTrigger>
             <TabsTrigger value="profile">
               <User className="mr-2 h-4 w-4" /> Profile
+            </TabsTrigger>
+            <TabsTrigger value="rewards">
+              <Award className="mr-2 h-4 w-4" /> Rewards
             </TabsTrigger>
           </TabsList>
 
@@ -703,6 +782,18 @@ function AccountContent() {
                                 </span>
                               </div>
                             )}
+                            {(o.loyalty?.discount ?? 0) > 0 && (
+                              <div className="mt-1 flex items-center justify-between text-xs">
+                                <span className="text-gray-600">
+                                  Reward points
+                                </span>
+                                <span className="font-medium text-green-600">
+                                  -৳{o.loyalty?.discount?.toLocaleString()} (
+                                  {o.loyalty?.pointsRedeemed?.toLocaleString()}{' '}
+                                  points)
+                                </span>
+                              </div>
+                            )}
                             <div className="mt-3 space-y-2">
                               {o.items.map((it, idx) => (
                                 <div
@@ -726,8 +817,12 @@ function AccountContent() {
                                     </p>
                                     {(it.variantLabel || it.sku) && (
                                       <p className="truncate text-xs text-gray-500">
-                                        {[it.variantLabel, it.sku && `SKU: ${it.sku}`]
-                                          .filter(Boolean).join(' · ')}
+                                        {[
+                                          it.variantLabel,
+                                          it.sku && `SKU: ${it.sku}`,
+                                        ]
+                                          .filter(Boolean)
+                                          .join(' · ')}
                                       </p>
                                     )}
                                     <p className="text-xs text-gray-600">
@@ -999,6 +1094,122 @@ function AccountContent() {
                       </div>
                     ))}
                   </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="rewards" className="mt-4">
+            <div className="grid gap-4 sm:grid-cols-3">
+              {[
+                {
+                  label: 'Available points',
+                  value: rewards?.balance ?? 0,
+                  detail: 'Ready to redeem at checkout',
+                },
+                {
+                  label: 'Pending points',
+                  value: rewards?.pendingPoints ?? 0,
+                  detail: 'Credited after successful delivery',
+                },
+                {
+                  label: 'Expiring soon',
+                  value: rewards?.expiringPoints ?? 0,
+                  detail: rewards?.nextExpiration
+                    ? `Next expiry ${new Date(rewards.nextExpiration).toLocaleDateString()}`
+                    : 'No upcoming expiration',
+                },
+              ].map((stat) => (
+                <Card key={stat.label}>
+                  <CardHeader className="pb-2">
+                    <CardDescription>{stat.label}</CardDescription>
+                    <CardTitle className="text-2xl">
+                      {rewardsLoading ? (
+                        <Skeleton className="h-7 w-20" />
+                      ) : (
+                        stat.value.toLocaleString()
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-xs text-muted-foreground">
+                    {stat.detail}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            <Card className="mt-4">
+              <CardHeader>
+                <CardTitle>Points activity</CardTitle>
+                <CardDescription>
+                  Earned points become available after delivery. Redeemed points
+                  are restored when an order is cancelled or refunded.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {rewardsLoading ? (
+                  <div className="space-y-3">
+                    {[0, 1, 2].map((item) => (
+                      <Skeleton key={item} className="h-14 w-full" />
+                    ))}
+                  </div>
+                ) : !rewards?.transactions.length ? (
+                  <EmptyState
+                    Icon={Award}
+                    title="No points activity yet"
+                    hint="Eligible purchases will appear here after delivery."
+                  />
+                ) : (
+                  <>
+                    <div className="divide-y">
+                      {rewards.transactions.map((transaction) => (
+                        <div
+                          key={transaction.id}
+                          className="flex flex-wrap items-center justify-between gap-3 py-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">
+                              {transaction.reason || transaction.type}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(
+                                transaction.createdAt
+                              ).toLocaleDateString()}
+                              {transaction.expiresAt
+                                ? ` · Expires ${new Date(transaction.expiresAt).toLocaleDateString()}`
+                                : ''}
+                            </p>
+                          </div>
+                          <Badge variant="secondary">
+                            {transaction.points > 0 ? '+' : ''}
+                            {transaction.points.toLocaleString()} points
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                    {rewards.pages > 1 && (
+                      <div className="mt-4 flex items-center justify-between">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={rewardsPage <= 1}
+                          onClick={() => setRewardsPage((page) => page - 1)}
+                        >
+                          Previous
+                        </Button>
+                        <span className="text-xs text-muted-foreground">
+                          Page {rewardsPage} of {rewards.pages}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={rewardsPage >= rewards.pages}
+                          onClick={() => setRewardsPage((page) => page + 1)}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -1565,6 +1776,7 @@ function OrderViewDialog({
   const steps = buildTimeline(order, phone);
   const subtotal = order.items.reduce((s, it) => s + it.price * it.quantity, 0);
   const couponDiscount = order.coupon?.discount || 0;
+  const pointsDiscount = order.loyalty?.discount || 0;
   const advancePaid = order.advancePaid || 0;
   const due = Math.max(0, order.total - advancePaid);
 
@@ -1651,6 +1863,30 @@ function OrderViewDialog({
                       </span>
                     </div>
                   )}
+                  {pointsDiscount > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">
+                        Reward points ({order.loyalty?.pointsRedeemed ?? 0})
+                      </span>
+                      <span className="text-green-600">
+                        -৳{pointsDiscount.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  {(order.shippingFee ?? 0) > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Delivery</span>
+                      <span>৳{order.shippingFee?.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {(order.loyalty?.pointsEarned ?? 0) > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Points earned</span>
+                      <span className="font-medium text-amber-700">
+                        +{order.loyalty?.pointsEarned?.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
                   {advancePaid > 0 && (
                     <div className="flex justify-between">
                       <span className="text-gray-600">Advance paid</span>
@@ -1698,7 +1934,8 @@ function OrderViewDialog({
                       {(it.variantLabel || it.sku) && (
                         <p className="truncate text-xs text-gray-500">
                           {[it.variantLabel, it.sku && `SKU: ${it.sku}`]
-                            .filter(Boolean).join(' · ')}
+                            .filter(Boolean)
+                            .join(' · ')}
                         </p>
                       )}
                       <p className="text-xs text-gray-600">

@@ -113,9 +113,14 @@ three staff roles; `superAdminOnly` is super_admin only.
 - `POST /api/payment/initiate` (protected) builds the gateway payload; `tran_id`
   is `<orderId>_<ts>` (full) or `<orderId>_adv_<ts>` (advance payment).
 - `GET/POST /api/payment/validate`, `POST /api/payment/ipn`, `GET/POST /api/payment/cancel`
-  resolve paid/failed/cancelled. Advance payments only record `advancePaid`.
-- Credentials come from the `PaymentGateway` doc `name:'sslcommerz'`, falling back
-  to `SSL_*` env vars (not currently in `.env` → sandbox test creds used).
+  verify a gateway transaction before recording it as paid. Redirect/IPN status
+  values alone are not trusted; transaction ID, BDT currency, and expected amount
+  must match the server-side SSLCommerz validation result. Advance payments
+  update `advancePaid`.
+- `SSL_STORE_ID`, `SSL_STORE_PASSWORD`, and `SSL_IS_LIVE` are read only from the
+  backend environment. Set `SSL_IS_LIVE=false` for sandbox/test mode and
+  `SSL_IS_LIVE=true` only for production. The admin dashboard controls whether a
+  payment method is available; it cannot read or change credentials or mode.
 
 **Auth, 2FA, lockout** — `authController.js`:
 
@@ -204,7 +209,7 @@ Render uses the npm lockfile generated in each service root.
 | `CLOUDINARY_*`                                   | image uploads                                                                                    |
 | `REDIS_*`                                        | `REDIS_ENABLED`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_TTL`, `REDIS_TLS`, `REDIS_USERNAME/PASSWORD` |
 | `RESEND_API_KEY`, `RESEND_FROM`, `EMAIL_ENABLED` | transactional email                                                                              |
-| `SSL_*` (optional)                               | SSLCommerz store id/password/live (else uses `PaymentGateway` doc)                               |
+| `SSL_STORE_ID`, `SSL_STORE_PASSWORD`, `SSL_IS_LIVE` | SSLCommerz credentials and explicit sandbox/live mode (environment only)                         |
 | `MAX_LOGIN_ATTEMPTS`, `LOCK_TIME_MINUTES`        | lockout tuning (default 5 / 15)                                                                  |
 
 ---
@@ -364,7 +369,8 @@ Open `http://localhost:3000`. Admin login: `http://localhost:3000/admin/login`.
   handler) — its `MulterError` handling is currently dead code.
 - `manager` role cannot enter the admin panel (layout gate). Adjust `ADMIN_ROLES`
   in `(admin)/layout.tsx` if managers should have access.
-- SSLCommerz runs in sandbox unless configured via the `PaymentGateway` doc or `SSL_*` env.
+- SSLCommerz mode and credentials are environment-only; payment availability is
+  controlled separately from the admin dashboard.
 
 ---
 

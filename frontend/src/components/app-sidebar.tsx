@@ -22,6 +22,7 @@ import { useAuth } from '@/store';
 import {
   BellCheck,
   ChartLine,
+  Coins,
   Gem,
   Layers,
   LayersArrowDown,
@@ -45,6 +46,7 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
   Orders: <LayersArrowDown />,
   'Filters Cms': <Layers />,
   Promotionals: <Gem />,
+  'Points Cms': <Coins />,
   Analytics: <ChartLine />,
   Users: <UsersRound />,
   Reviews: <UserStar />,

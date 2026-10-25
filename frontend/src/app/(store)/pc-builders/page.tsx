@@ -99,6 +99,12 @@ export default function PcBuildersPage() {
   ).filter((s) => !selected[s]);
 
   async function addToCart() {
+    if (!isAuthenticated && !localStorage.getItem('mobile_token')) {
+      router.push(
+        `/login?redirect=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`
+      );
+      return;
+    }
     if (selectedCount === 0) {
       toast.error('Select at least one component');
       return;

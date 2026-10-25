@@ -18,7 +18,9 @@ export const orders = pgTable(
     items: jsonb("items").notNull().default([]),
     shippingAddress: jsonb("shipping_address").notNull().default({}),
     totalAmount: doublePrecision("total_amount").notNull(),
+    shippingFee: doublePrecision("shipping_fee").notNull().default(0),
     coupon: jsonb("coupon").notNull().default({ code: "", discount: 0 }),
+    loyalty: jsonb("loyalty").notNull().default({}),
     payment: jsonb("payment")
       .notNull()
       .default({ method: "sslcommerz", status: "pending" }),
@@ -46,13 +48,14 @@ export const orders = pgTable(
       sql`(${table.payment}->>'tran_id')`,
     ),
     check("customer_orders_total_nonnegative", sql`${table.totalAmount} >= 0`),
+    check("customer_orders_shipping_fee_nonnegative", sql`${table.shippingFee} >= 0`),
     check(
       "customer_orders_items_array_check",
       sql`jsonb_typeof(${table.items}) = 'array'`,
     ),
     check(
       "customer_orders_order_status_check",
-      sql`${table.orderStatus} in ('pending', 'processing', 'confirmed', 'send_courier', 'cancelled')`,
+      sql`${table.orderStatus} in ('pending', 'processing', 'confirmed', 'send_courier', 'delivered', 'cancelled')`,
     ),
     check(
       "customer_orders_payment_status_check",

@@ -9,6 +9,7 @@ import { useCart } from '@/store';
 
 interface Props {
   item: CartItem;
+  priorityImage?: boolean;
 }
 
 const spring = {
@@ -18,7 +19,7 @@ const spring = {
   mass: 0.8,
 };
 
-export const CartItemCard = ({ item }: Props) => {
+export const CartItemCard = ({ item, priorityImage = false }: Props) => {
   const { removeItem, updateQuantity } = useCart();
   const lineTotal = item.price * item.quantity;
   const savings = item.promoDiscount * item.quantity;
@@ -45,6 +46,7 @@ export const CartItemCard = ({ item }: Props) => {
             fill
             className="object-contain"
             sizes="96px"
+            loading={priorityImage ? 'eager' : 'lazy'}
           />
         </motion.div>
 

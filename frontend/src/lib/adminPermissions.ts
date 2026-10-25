@@ -17,6 +17,7 @@ export const ADMIN_ROUTE_ACCESS: Record<string, RouteAccess> = {
   '/admin/meta': 'super_admin',
   '/admin/promo': 'super_admin',
   '/admin/settings': 'admin',
+  '/admin/loyalty': 'any',
   '/admin/maintenance': 'super_admin',
   '/admin/history': 'super_admin',
   // '/admin/billing': 'nobody', // example: under construction -> blocked for all

@@ -3,16 +3,11 @@
 import { useMemo, useState, useEffect } from 'react';
 import {
   CreditCard,
-  Wallet,
-  Smartphone,
   Truck,
   Save,
   RotateCcw,
-  Eye,
-  EyeOff,
   CheckCircle2,
   XCircle,
-  FlaskConical,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -21,7 +16,6 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { Separator } from '@/components/ui/separator';
 import {
   Card,
   CardContent,
@@ -30,36 +24,19 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { paymentSettingsApi, type PaymentGateway } from '@/lib/api';
+import { paymentSettingsApi, type SSLCommerzConfigStatus } from '@/lib/api';
 import { SiteHeader } from '@/components/site-header';
 
 type SslCommerz = {
   status: boolean;
-  description: string;
-  sandbox: boolean;
-  storeId: string;
-  storePassword: string;
 };
 
 type Bkash = {
   status: boolean;
-  label: string;
-  sandbox: boolean;
-  appKey: string;
-  appSecret: string;
-  username: string;
-  password: string;
 };
 
 type Nagad = {
   status: boolean;
-  label: string;
-  description: string;
-  sandbox: boolean;
-  merchantId: string;
-  merchantNumber: string;
-  publicKey: string;
-  privateKey: string;
 };
 
 type Cod = {
@@ -77,41 +54,6 @@ type Settings = {
   nagad: Nagad;
   cod: Cod;
 };
-
-function SecretInput({
-  id,
-  value,
-  onChange,
-  placeholder,
-}: {
-  id: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  const [show, setShow] = useState(false);
-  return (
-    <div className="relative">
-      <Input
-        id={id}
-        type={show ? 'text' : 'password'}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="pr-10 font-mono"
-        autoComplete="off"
-      />
-      <button
-        type="button"
-        onClick={() => setShow((s) => !s)}
-        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-        aria-label={show ? 'Hide value' : 'Show value'}
-      >
-        {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-      </button>
-    </div>
-  );
-}
 
 function Field({
   label,
@@ -135,52 +77,28 @@ function Field({
 
 function StatusRow({
   status,
-  sandbox,
   onStatus,
-  onSandbox,
   idPrefix,
 }: {
   status: boolean;
-  sandbox: boolean;
   onStatus: (v: boolean) => void;
-  onSandbox: (v: boolean) => void;
   idPrefix: string;
 }) {
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <div className="flex items-center justify-between rounded-lg border p-4">
-        <div>
-          <Label htmlFor={`${idPrefix}-status`} className="text-sm font-medium">
-            Status
-          </Label>
-          <p className="text-xs text-muted-foreground">
-            Enable this method at checkout
-          </p>
-        </div>
-        <Switch
-          id={`${idPrefix}-status`}
-          checked={status}
-          onCheckedChange={onStatus}
-        />
+    <div className="flex items-center justify-between rounded-lg border p-4">
+      <div>
+        <Label htmlFor={`${idPrefix}-status`} className="text-sm font-medium">
+          Status
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          Enable this method at checkout
+        </p>
       </div>
-      <div className="flex items-center justify-between rounded-lg border p-4">
-        <div>
-          <Label
-            htmlFor={`${idPrefix}-sandbox`}
-            className="text-sm font-medium"
-          >
-            Sandbox mode
-          </Label>
-          <p className="text-xs text-muted-foreground">
-            Use test credentials, no real money
-          </p>
-        </div>
-        <Switch
-          id={`${idPrefix}-sandbox`}
-          checked={sandbox}
-          onCheckedChange={onSandbox}
-        />
-      </div>
+      <Switch
+        id={`${idPrefix}-status`}
+        checked={status}
+        onCheckedChange={onStatus}
+      />
     </div>
   );
 }
@@ -189,6 +107,9 @@ export default function AdminPaymentPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [sslConfig, setSslConfig] = useState<SSLCommerzConfigStatus | null>(
+    null
+  );
 
   const enabledCount = useMemo(
     () =>
@@ -203,54 +124,22 @@ export default function AdminPaymentPage() {
     [settings]
   );
 
-  const sandboxCount = useMemo(
-    () =>
-      settings
-        ? [
-            settings!.sslcommerz.sandbox,
-            settings!.bkash.sandbox,
-            settings!.nagad.sandbox,
-          ].filter(Boolean).length
-        : 0,
-    [settings]
-  );
-
   async function loadSettings() {
     setLoading(true);
     try {
       const { data } = await paymentSettingsApi.getAll();
+      setSslConfig(data.sslcommerzConfig);
       const gateways = data.gateways || [];
       const byName = Object.fromEntries(gateways.map((g) => [g.name, g]));
       setSettings({
         sslcommerz: {
           status: byName['sslcommerz']?.enabled ?? true,
-          description:
-            byName['sslcommerz']?.config?.description ??
-            'Pay with cards and mobile wallets.',
-          sandbox: byName['sslcommerz']?.config?.sandbox ?? true,
-          storeId: byName['sslcommerz']?.config?.storeId ?? '',
-          storePassword: byName['sslcommerz']?.config?.storePassword ?? '',
         },
         bkash: {
           status: byName['bkash']?.enabled ?? true,
-          label: byName['bkash']?.config?.label ?? 'bKash',
-          sandbox: byName['bkash']?.config?.sandbox ?? true,
-          appKey: byName['bkash']?.config?.appKey ?? '',
-          appSecret: byName['bkash']?.config?.appSecret ?? '',
-          username: byName['bkash']?.config?.username ?? '',
-          password: byName['bkash']?.config?.password ?? '',
         },
         nagad: {
           status: byName['nagad']?.enabled ?? false,
-          label: byName['nagad']?.config?.label ?? 'Nagad',
-          description:
-            byName['nagad']?.config?.description ??
-            'Pay with your Nagad mobile wallet.',
-          sandbox: byName['nagad']?.config?.sandbox ?? true,
-          merchantId: byName['nagad']?.config?.merchantId ?? '',
-          merchantNumber: byName['nagad']?.config?.merchantNumber ?? '',
-          publicKey: byName['nagad']?.config?.publicKey ?? '',
-          privateKey: byName['nagad']?.config?.privateKey ?? '',
         },
         cod: {
           status: byName['cod']?.enabled ?? true,
@@ -282,31 +171,26 @@ export default function AdminPaymentPage() {
   }
 
   async function save(key: keyof Settings, name: string) {
+    const currentSettings = settings;
+    if (!currentSettings) return;
+
     setSaving(key);
     try {
-      const s = settings![key] as any;
-      const payload: { enabled: boolean; config: Record<string, any> } = {
-        enabled: s.status,
-        config: {},
+      const payload: {
+        enabled: boolean;
+        config?: Record<string, string>;
+      } = {
+        enabled: currentSettings[key].status,
       };
-      switch (key) {
-        case 'sslcommerz':
-          payload.config = {
-            description: s.description,
-            sandbox: s.sandbox,
-            storeId: s.storeId,
-            storePassword: s.storePassword,
-          };
-          break;
-        case 'cod':
-          payload.config = {
-            label: s.label,
-            description: s.description,
-            minOrder: s.minOrder,
-            maxOrder: s.maxOrder,
-            extraCharge: s.extraCharge,
-          };
-          break;
+      if (key === 'cod') {
+        const cod = currentSettings.cod;
+        payload.config = {
+          label: cod.label,
+          description: cod.description,
+          minOrder: cod.minOrder,
+          maxOrder: cod.maxOrder,
+          extraCharge: cod.extraCharge,
+        };
       }
       await paymentSettingsApi.update(key, payload);
       toast.success(`${name} settings saved`);
@@ -330,7 +214,6 @@ export default function AdminPaymentPage() {
     },
     { label: 'Enabled', value: enabledCount, icon: CheckCircle2 },
     { label: 'Disabled', value: 4 - enabledCount, icon: XCircle },
-    { label: 'In sandbox', value: sandboxCount, icon: FlaskConical },
   ];
 
   function Actions({
@@ -372,8 +255,9 @@ export default function AdminPaymentPage() {
                 Payment management
               </h1>
               <p className="text-sm text-muted-foreground">
-                Configure Bangladeshi payment gateways — SSLCommerz, bKash,
-                Nagad and Cash on Delivery.
+                Enable or disable checkout payment methods. SSLCommerz
+                credentials and test/live mode are controlled by backend
+                environment variables.
               </p>
             </header>
 
@@ -411,6 +295,27 @@ export default function AdminPaymentPage() {
                         <CardTitle className="flex items-center gap-2">
                           SSLCommerz
                           <Badge
+                            className={
+                              sslConfig?.configured
+                                ? 'border-emerald-200 bg-emerald-100 text-emerald-800'
+                                : ''
+                            }
+                            variant={
+                              sslConfig?.configured ? 'outline' : 'destructive'
+                            }
+                          >
+                            {sslConfig?.configured
+                              ? 'Configured'
+                              : 'Not configured'}
+                          </Badge>
+                          <Badge variant="secondary">
+                            {sslConfig?.mode
+                              ? sslConfig.mode === 'live'
+                                ? 'Live mode'
+                                : 'Sandbox mode'
+                              : 'Mode not set'}
+                          </Badge>
+                          <Badge
                             variant={
                               settings!.sslcommerz.status
                                 ? 'default'
@@ -421,12 +326,10 @@ export default function AdminPaymentPage() {
                               ? 'Enabled'
                               : 'Disabled'}
                           </Badge>
-                          {settings!.sslcommerz.sandbox && (
-                            <Badge variant="outline">Sandbox</Badge>
-                          )}
                         </CardTitle>
                         <CardDescription>
                           Cards, internet banking and mobile banking aggregator.
+                          Credentials and test/live mode are not editable here.
                         </CardDescription>
                       </div>
                     </div>
@@ -435,48 +338,8 @@ export default function AdminPaymentPage() {
                     <StatusRow
                       idPrefix="ssl"
                       status={settings!.sslcommerz.status}
-                      sandbox={settings!.sslcommerz.sandbox}
                       onStatus={(v) => update('sslcommerz', { status: v })}
-                      onSandbox={(v) => update('sslcommerz', { sandbox: v })}
                     />
-                    <Field
-                      label="Description"
-                      htmlFor="ssl-desc"
-                      hint="Shown to the customer on the checkout page."
-                    >
-                      <Textarea
-                        id="ssl-desc"
-                        rows={3}
-                        value={settings!.sslcommerz.description}
-                        onChange={(e) =>
-                          update('sslcommerz', { description: e.target.value })
-                        }
-                      />
-                    </Field>
-                    <Separator />
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Field label="Store ID" htmlFor="ssl-store-id">
-                        <Input
-                          id="ssl-store-id"
-                          className="font-mono"
-                          value={settings!.sslcommerz.storeId}
-                          onChange={(e) =>
-                            update('sslcommerz', { storeId: e.target.value })
-                          }
-                          placeholder="yourstore0live"
-                        />
-                      </Field>
-                      <Field label="Store Password" htmlFor="ssl-store-pass">
-                        <SecretInput
-                          id="ssl-store-pass"
-                          value={settings!.sslcommerz.storePassword}
-                          onChange={(v) =>
-                            update('sslcommerz', { storePassword: v })
-                          }
-                          placeholder="yourstore0live@ssl"
-                        />
-                      </Field>
-                    </div>
                     <Actions methodKey="sslcommerz" name="SSLCommerz" />
                   </CardContent>
                 </Card>

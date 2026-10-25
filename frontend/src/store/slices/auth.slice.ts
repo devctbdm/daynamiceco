@@ -117,6 +117,10 @@ export const createAuthSlice: StateCreator<AuthSlice> = (set) => ({
     try {
       await apiFetch('/auth/logout', { method: 'POST' });
     } finally {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('mobile_token');
+        document.cookie = 'token=; path=/; max-age=0; SameSite=Lax';
+      }
       meResource.set({ user: null });
       cacheAdminUser(null);
       set({

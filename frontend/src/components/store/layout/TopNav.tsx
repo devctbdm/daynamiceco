@@ -136,6 +136,8 @@ const TopNav = () => {
                     onClick={async () => {
                       try {
                         await logout();
+                      } catch (error) {
+                        console.error('Logout request failed:', error);
                       } finally {
                         window.location.href = '/';
                       }

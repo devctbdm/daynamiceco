@@ -30,6 +30,10 @@ class AuthController {
     return this.usersService.login(request, body);
   }
 
+  logout() {
+    return { success: true };
+  }
+
   async verifyOtp(request, body) {
     return this.usersService.verifyOtp(request, body);
   }
@@ -105,8 +109,9 @@ const authMethod = (method, decorator, path, guarded = false) => {
   }
 };
 
-authMethod("register", Post);
+authMethod("register", Post, "register");
 authMethod("login", Post, "login");
+authMethod("logout", Post, "logout");
 authMethod("verifyOtp", Post, "verify-otp");
 authMethod("forgotPassword", Post, "forgot-password");
 authMethod("resetPassword", Post, "reset-password");
@@ -123,6 +128,7 @@ authMethod("setDefaultAddress", Put, "me/addresses/:id/default", true);
 
 for (const method of [
   "login",
+  "logout",
   "verifyOtp",
   "forgotPassword",
   "resetPassword",

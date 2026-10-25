@@ -976,7 +976,7 @@ export default function NewOrderPage() {
               <CardContent className="space-y-3">
                 <div className="grid gap-1.5">
                   <Label htmlFor="pay-method">Payment method</Label>
-                  <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                  <Select value={paymentMethod}                   onValueChange={(value) => value && setPaymentMethod(value)}>
                     <SelectTrigger id="pay-method">
                       <SelectValue />
                     </SelectTrigger>

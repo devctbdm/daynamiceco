@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'motion/react';
-import { productApi, questionApi } from '@/lib/api';
+import { loyaltyApi, productApi, questionApi } from '@/lib/api';
 import type { Product } from '@/types/product';
 import { RichTextView } from '@/components/RichTextView';
 import { useAuth } from '@/hooks/useAuth';
@@ -257,6 +257,7 @@ export default function ProductDetail({
     : false;
   const variant =
     selectedVariant !== null ? variants[selectedVariant] || null : null;
+  const [loyaltyEstimate, setLoyaltyEstimate] = useState<number | null>(null);
 
   const [questions, setQuestions] = useState<any[]>([]);
   const [questionText, setQuestionText] = useState('');
@@ -286,6 +287,23 @@ export default function ProductDetail({
   useEffect(() => {
     setActiveImage(0);
   }, [selectedVariant]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoyaltyEstimate(null);
+    if (!product?._id) return;
+    loyaltyApi
+      .estimateProduct(product._id, variant?._id)
+      .then(({ data }) => {
+        if (!cancelled && data.enabled) setLoyaltyEstimate(data.points);
+      })
+      .catch(() => {
+        if (!cancelled) setLoyaltyEstimate(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [product?._id, variant?._id]);
 
   useEffect(() => {
     if (variants.length > 0 && selectedVariant === null) {
@@ -729,6 +747,16 @@ export default function ProductDetail({
               <span className="text-sm font-medium text-gray-600">Status</span>
               <span className={`font-semibold ${stockColor}`}>{stockText}</span>
             </div>
+            {loyaltyEstimate !== null && loyaltyEstimate > 0 && (
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="text-sm font-medium text-gray-600">
+                  Rewards
+                </span>
+                <span className="font-semibold text-amber-700">
+                  Earn up to {loyaltyEstimate} points
+                </span>
+              </div>
+            )}
             <div className="flex items-center justify-between px-4 py-3">
               <span className="text-sm font-medium text-gray-600">SKU</span>
               <span className="font-semibold text-gray-800">

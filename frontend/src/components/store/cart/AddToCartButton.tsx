@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { useCart } from '@/store';
+import { useAuth, useCart } from '@/store';
 import { useStoreStatus } from '@/components/store/StoreStatusProvider';
 import { Product, ProductVariant } from '@/types/product';
 import { Button } from '@/components/button/Button';
@@ -27,9 +28,17 @@ export const AddToCartButton: React.FC<Props> = ({
   variant,
   variantRequired = false,
 }) => {
+  const router = useRouter();
+  const { isAuthenticated } = useAuth();
   const { addItem, isLoading, items } = useCart();
   const { buyingEnabled, sellingMessage } = useStoreStatus();
   const [adding, setAdding] = useState(false);
+  const [hasToken, setHasToken] = useState(false);
+
+  useEffect(() => {
+    setHasToken(!!localStorage.getItem('mobile_token'));
+  }, [isAuthenticated]);
+
   const variantPrice =
     typeof variant?.price === 'number' ? variant.price : undefined;
   const variantDiscount =
@@ -48,6 +57,12 @@ export const AddToCartButton: React.FC<Props> = ({
 
   const handleAdd = async () => {
     if (adding) return;
+    const hasStoredToken = !!localStorage.getItem('mobile_token');
+    if (!isAuthenticated && !hasStoredToken) {
+      const redirect = `${window.location.pathname}${window.location.search}`;
+      router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
+      return;
+    }
     if (!variantIsComplete) {
       toast.error('Please select a complete product combination.');
       return;
@@ -126,7 +141,11 @@ export const AddToCartButton: React.FC<Props> = ({
       size="sm"
       disabled={disabled || !variantIsComplete}
     >
-      {buyingEnabled ? 'Add to Cart' : 'Buying Disabled'}
+      {!isAuthenticated && !hasToken
+        ? 'Login to Add to Cart'
+        : buyingEnabled
+          ? 'Add to Cart'
+          : 'Buying Disabled'}
     </Button>
   );
 };
