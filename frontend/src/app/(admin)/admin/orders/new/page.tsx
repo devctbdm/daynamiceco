@@ -71,10 +71,28 @@ type ProductResult = {
   stock: number;
   brand?: string;
   sku?: string;
+  variants?: {
+    _id?: string;
+    color?: string;
+    storage?: string;
+    ram?: string;
+    price?: number;
+    discountPrice?: number;
+    stock?: number;
+    sku?: string;
+    images?: string[];
+    enabled?: boolean;
+  }[];
 };
 
 type CartItem = {
   product: ProductResult;
+  variantId?: string;
+  variantLabel?: string;
+  sku?: string;
+  price: number;
+  stock: number;
+  image: string;
   quantity: number;
 };
 
@@ -105,8 +123,15 @@ const DEFAULT_ADDR: ShippingAddr = {
   country: 'Bangladesh',
 };
 
-function effectivePrice(p: ProductResult) {
-  return p.discountPrice > 0 ? p.discountPrice : p.price;
+function effectivePrice(
+  product: ProductResult,
+  variant?: NonNullable<ProductResult['variants']>[number]
+) {
+  const price = variant ? Number(variant.price) : product.price;
+  const discountPrice = variant
+    ? Number(variant.discountPrice || 0)
+    : product.discountPrice;
+  return discountPrice > 0 && discountPrice < price ? discountPrice : price;
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -239,24 +264,71 @@ export default function NewOrderPage() {
     return () => { if (productSearchRef.current) clearTimeout(productSearchRef.current); };
   }, [productQuery, searchProducts]);
 
-  const addToCart = (product: ProductResult) => {
+  const addToCart = (
+    product: ProductResult,
+    variant?: NonNullable<ProductResult['variants']>[number]
+  ) => {
+    const allVariants = product.variants || [];
+    const activeVariants = allVariants.filter(
+      (entry) => entry.enabled !== false
+    );
+    if (allVariants.length > 0 && !variant) {
+      toast.error('Select a product combination before adding it');
+      return;
+    }
+    if (allVariants.length > 0 && activeVariants.length === 0) {
+      toast.error('This product has no available combinations');
+      return;
+    }
+    if (variant && !variant._id) {
+      toast.error('This product combination is missing its ID');
+      return;
+    }
+    const stock = variant ? Number(variant.stock || 0) : product.stock;
+    const price = effectivePrice(product, variant);
+    if (!Number.isFinite(price) || price < 0) {
+      toast.error('This product combination has no valid price');
+      return;
+    }
+    const variantLabel = variant
+      ? [variant.color, variant.storage, variant.ram].filter(Boolean).join(' / ')
+      : '';
     setCart((prev) => {
-      const existing = prev.find((i) => i.product._id === product._id);
+      const existing = prev.find(
+        (item) =>
+          item.product._id === product._id &&
+          (item.variantId || '') === (variant?._id || '')
+      );
       if (existing) {
         const newQty = existing.quantity + 1;
-        if (newQty > product.stock) {
-          toast.error(`Only ${product.stock} units in stock`);
+        if (newQty > stock) {
+          toast.error(`Only ${stock} units in stock for ${variantLabel || product.name}`);
           return prev;
         }
         return prev.map((i) =>
-          i.product._id === product._id ? { ...i, quantity: newQty } : i
+          i.product._id === product._id &&
+          (i.variantId || '') === (variant?._id || '')
+            ? { ...i, quantity: newQty }
+            : i
         );
       }
-      if (product.stock < 1) {
-        toast.error(`"${product.name}" is out of stock`);
+      if (stock < 1) {
+        toast.error(`"${variantLabel || product.name}" is out of stock`);
         return prev;
       }
-      return [...prev, { product, quantity: 1 }];
+      return [
+        ...prev,
+        {
+          product,
+          variantId: variant?._id,
+          variantLabel,
+          sku: variant?.sku || product.sku || '',
+          price,
+          stock,
+          image: variant?.images?.[0] || product.images?.[0] || '',
+          quantity: 1,
+        },
+      ];
     });
     setProductQuery('');
     setShowProductDropdown(false);
@@ -264,14 +336,21 @@ export default function NewOrderPage() {
     resetCoupon();
   };
 
-  const updateQty = (productId: string, delta: number) => {
+  const updateQty = (
+    productId: string,
+    variantId: string | undefined,
+    delta: number
+  ) => {
     setCart((prev) =>
       prev.flatMap((item) => {
-        if (item.product._id !== productId) return [item];
+        if (
+          item.product._id !== productId ||
+          (item.variantId || '') !== (variantId || '')
+        ) return [item];
         const newQty = item.quantity + delta;
         if (newQty < 1) return [];
-        if (newQty > item.product.stock) {
-          toast.error(`Only ${item.product.stock} units in stock`);
+        if (newQty > item.stock) {
+          toast.error(`Only ${item.stock} units in stock`);
           return [item];
         }
         return [{ ...item, quantity: newQty }];
@@ -280,8 +359,14 @@ export default function NewOrderPage() {
     resetCoupon();
   };
 
-  const removeFromCart = (productId: string) => {
-    setCart((prev) => prev.filter((i) => i.product._id !== productId));
+  const removeFromCart = (productId: string, variantId?: string) => {
+    setCart((prev) =>
+      prev.filter(
+        (i) =>
+          i.product._id !== productId ||
+          (i.variantId || '') !== (variantId || '')
+      )
+    );
     resetCoupon();
   };
 
@@ -297,8 +382,12 @@ export default function NewOrderPage() {
     setValidatingCoupon(true);
     setCouponError('');
     try {
-      const items = cart.map((i) => ({ product: i.product._id, quantity: i.quantity }));
-      const subtotal = cart.reduce((s, i) => s + effectivePrice(i.product) * i.quantity, 0);
+      const items = cart.map((i) => ({
+        product: i.product._id,
+        variantId: i.variantId,
+        quantity: i.quantity,
+      }));
+      const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
       const { data } = await promoApi.validate(couponCode.trim(), subtotal, items);
       if (data.success) {
         setCouponDiscount(data.discount);
@@ -316,7 +405,7 @@ export default function NewOrderPage() {
   };
 
   // ── Totals ──────────────────────────────────────────────────────────────────
-  const subtotal = cart.reduce((s, i) => s + effectivePrice(i.product) * i.quantity, 0);
+  const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
   const shippingFee =
     shippingFeeOption === -1
       ? Math.max(0, Number(customShippingFee) || 0)
@@ -341,7 +430,11 @@ export default function NewOrderPage() {
     try {
       const { data } = await orderApi.adminCreate({
         customerId: selectedCustomer!._id,
-        items: cart.map((i) => ({ product: i.product._id, quantity: i.quantity })),
+        items: cart.map((i) => ({
+          product: i.product._id,
+          variantId: i.variantId,
+          quantity: i.quantity,
+        })),
         shippingAddress: shippingAddr,
         paymentMethod,
         paymentStatus,
@@ -501,42 +594,88 @@ export default function NewOrderPage() {
                         <ul className="py-1 max-h-72 overflow-auto">
                           {productResults.map((p) => {
                             const price = effectivePrice(p);
-                            const inCart = cart.find((i) => i.product._id === p._id);
+                            const inCart = cart
+                              .filter((i) => i.product._id === p._id)
+                              .reduce((quantity, item) => quantity + item.quantity, 0);
+                            const variants = (p.variants || []).filter(
+                              (variant) => variant.enabled !== false
+                            );
+                            const hasVariantRows = (p.variants || []).length > 0;
                             return (
-                              <li
-                                key={p._id}
-                                className="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-accent"
-                                onMouseDown={() => addToCart(p)}
-                              >
-                                {p.images?.[0] ? (
-                                  <img
-                                    src={p.images[0]}
-                                    alt={p.name}
-                                    className="h-10 w-10 rounded object-cover shrink-0"
-                                  />
-                                ) : (
-                                  <div className="h-10 w-10 rounded bg-muted flex items-center justify-center shrink-0">
-                                    <Package className="h-5 w-5 text-muted-foreground" />
+                              <li key={p._id} className="border-b last:border-0">
+                                <div className="flex items-center gap-3 px-3 py-2.5">
+                                  {p.images?.[0] ? (
+                                    <img
+                                      src={p.images[0]}
+                                      alt={p.name}
+                                      className="h-10 w-10 rounded object-cover shrink-0"
+                                    />
+                                  ) : (
+                                    <div className="h-10 w-10 rounded bg-muted flex items-center justify-center shrink-0">
+                                      <Package className="h-5 w-5 text-muted-foreground" />
+                                    </div>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium truncate">{p.name}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {hasVariantRows
+                                        ? `${variants.length} combination${variants.length === 1 ? '' : 's'}`
+                                        : `৳${price.toLocaleString()} · stock: ${p.stock}`}
+                                    </p>
+                                  </div>
+                                  {inCart > 0 && (
+                                    <Badge variant="secondary" className="shrink-0 text-xs">
+                                      In cart ×{inCart}
+                                    </Badge>
+                                  )}
+                                  {!hasVariantRows && (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      disabled={p.stock < 1}
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => addToCart(p)}
+                                    >
+                                      Add
+                                    </Button>
+                                  )}
+                                </div>
+                                {hasVariantRows && (
+                                  <div className="grid gap-1 px-3 pb-3 sm:grid-cols-2">
+                                    {variants.map((variant) => {
+                                      const variantPrice = effectivePrice(p, variant);
+                                      const variantLabel = [
+                                        variant.color,
+                                        variant.storage,
+                                        variant.ram,
+                                      ].filter(Boolean).join(' / ');
+                                      return (
+                                        <Button
+                                          key={variant._id || variantLabel}
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          disabled={!variant._id || Number(variant.stock || 0) < 1}
+                                          onMouseDown={(event) => event.preventDefault()}
+                                          onClick={() => addToCart(p, variant)}
+                                          className="h-auto justify-between whitespace-normal py-2 text-left"
+                                        >
+                                          <span>{variantLabel || variant.sku || 'Combination'}</span>
+                                          <span className="shrink-0">
+                                            ৳{variantPrice.toLocaleString()}
+                                          </span>
+                                        </Button>
+                                      );
+                                    })}
+                                    {variants.length === 0 && (
+                                      <p className="text-xs text-muted-foreground">
+                                        No combinations are currently available.
+                                      </p>
+                                    )}
                                   </div>
                                 )}
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium truncate">{p.name}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    ৳{price.toLocaleString()}
-                                    {p.discountPrice > 0 && (
-                                      <span className="ml-1 line-through text-muted-foreground/60">
-                                        ৳{p.price.toLocaleString()}
-                                      </span>
-                                    )}
-                                    {' · '}stock: {p.stock}
-                                  </p>
-                                </div>
-                                {inCart && (
-                                  <Badge variant="secondary" className="shrink-0 text-xs">
-                                    In cart ×{inCart.quantity}
-                                  </Badge>
-                                )}
-                                {p.stock === 0 && (
+                                {!hasVariantRows && p.stock === 0 && (
                                   <Badge variant="secondary" className="shrink-0 text-xs bg-red-100 text-red-700">
                                     Out of stock
                                   </Badge>
@@ -559,13 +698,13 @@ export default function NewOrderPage() {
                   </div>
                 ) : (
                   <div className="rounded-md border divide-y">
-                    {cart.map(({ product, quantity }) => {
-                      const price = effectivePrice(product);
+                    {cart.map((item) => {
+                      const { product, quantity, price, image, stock } = item;
                       return (
-                        <div key={product._id} className="flex items-center gap-3 px-3 py-3">
-                          {product.images?.[0] ? (
+                        <div key={`${product._id}:${item.variantId || ''}`} className="flex items-center gap-3 px-3 py-3">
+                          {image ? (
                             <img
-                              src={product.images[0]}
+                              src={image}
                               alt={product.name}
                               className="h-12 w-12 rounded object-cover shrink-0"
                             />
@@ -576,8 +715,14 @@ export default function NewOrderPage() {
                           )}
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">{product.name}</p>
+                            {(item.variantLabel || item.sku) && (
+                              <p className="text-xs text-muted-foreground">
+                                {[item.variantLabel, item.sku && `SKU: ${item.sku}`]
+                                  .filter(Boolean).join(' · ')}
+                              </p>
+                            )}
                             <p className="text-xs text-muted-foreground">
-                              ৳{price.toLocaleString()} each · stock: {product.stock}
+                              ৳{price.toLocaleString()} each · stock: {stock}
                             </p>
                           </div>
                           {/* Qty controls */}
@@ -586,7 +731,7 @@ export default function NewOrderPage() {
                               variant="outline"
                               size="icon"
                               className="h-7 w-7"
-                              onClick={() => updateQty(product._id, -1)}
+                              onClick={() => updateQty(product._id, item.variantId, -1)}
                             >
                               <Minus className="h-3 w-3" />
                             </Button>
@@ -595,7 +740,8 @@ export default function NewOrderPage() {
                               variant="outline"
                               size="icon"
                               className="h-7 w-7"
-                              onClick={() => updateQty(product._id, 1)}
+                              onClick={() => updateQty(product._id, item.variantId, 1)}
+                              disabled={quantity >= stock}
                             >
                               <Plus className="h-3 w-3" />
                             </Button>
@@ -607,7 +753,7 @@ export default function NewOrderPage() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-destructive hover:text-destructive shrink-0"
-                            onClick={() => removeFromCart(product._id)}
+                            onClick={() => removeFromCart(product._id, item.variantId)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>

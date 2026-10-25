@@ -78,6 +78,8 @@ type OrderItem = {
   price: number;
   quantity: number;
   image: string;
+  variantLabel?: string;
+  sku?: string;
 };
 type Order = {
   id: string;
@@ -409,6 +411,8 @@ function AccountContent() {
                 price: i.price,
                 quantity: i.quantity,
                 image: i.image,
+                variantLabel: i.variantLabel,
+                sku: i.sku,
               })),
             }))
           );
@@ -720,6 +724,12 @@ function AccountContent() {
                                     <p className="truncate text-sm font-medium">
                                       {it.name}
                                     </p>
+                                    {(it.variantLabel || it.sku) && (
+                                      <p className="truncate text-xs text-gray-500">
+                                        {[it.variantLabel, it.sku && `SKU: ${it.sku}`]
+                                          .filter(Boolean).join(' · ')}
+                                      </p>
+                                    )}
                                     <p className="text-xs text-gray-600">
                                       {it.quantity} × ৳
                                       {it.price.toLocaleString()}
@@ -1685,6 +1695,12 @@ function OrderViewDialog({
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{it.name}</p>
+                      {(it.variantLabel || it.sku) && (
+                        <p className="truncate text-xs text-gray-500">
+                          {[it.variantLabel, it.sku && `SKU: ${it.sku}`]
+                            .filter(Boolean).join(' · ')}
+                        </p>
+                      )}
                       <p className="text-xs text-gray-600">
                         ৳{it.price.toLocaleString()} × {it.quantity}
                       </p>

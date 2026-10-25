@@ -12,13 +12,24 @@ const isAuthed = () => isBrowser() && !!localStorage.getItem('mobile_token');
 const mapServerItems = (items: any[]): CartItem[] =>
   (items || []).map((i: any) => ({
     productId: i.product?._id ?? i.product,
+    variantId: i.variantId || undefined,
+    variantLabel: i.variantLabel || '',
+    sku: i.sku || '',
     name: i.name,
     price: i.price,
     promoDiscount: i.promoDiscount || 0,
     quantity: i.quantity,
     image: i.image,
-    stock: i.product?.stock ?? i.stock ?? 0,
+    stock: i.stock ?? i.product?.stock ?? 0,
   }));
+
+const sameCartItem = (
+  item: CartItem,
+  productId: string,
+  variantId?: string
+) =>
+  item.productId === productId &&
+  (item.variantId || '') === (variantId || '');
 
 export interface CartSlice {
   items: CartItem[];
@@ -38,8 +49,12 @@ export interface CartSlice {
   addItem: (
     product: Omit<CartItem, 'quantity'> & { quantity?: number }
   ) => Promise<void>;
-  removeItem: (productId: string) => Promise<void>;
-  updateQuantity: (productId: string, quantity: number) => Promise<void>;
+  removeItem: (productId: string, variantId?: string) => Promise<void>;
+  updateQuantity: (
+    productId: string,
+    quantity: number,
+    variantId?: string
+  ) => Promise<void>;
   clearCart: () => Promise<void>;
   syncCartWithBackend: () => Promise<void>; // Merge guest cart after login
 }
@@ -81,7 +96,7 @@ export const createCartSlice: StateCreator<CartSlice> = (set, get) => ({
   addItem: async (product) => {
     const { items } = get();
     const existingIndex = items.findIndex(
-      (item) => item.productId === product.productId
+      (item) => sameCartItem(item, product.productId, product.variantId)
     );
 
     let newItems: CartItem[];
@@ -112,6 +127,7 @@ export const createCartSlice: StateCreator<CartSlice> = (set, get) => ({
         method: 'POST',
         body: {
           productId: product.productId,
+          variantId: product.variantId || '',
           name: product.name,
           price: product.price,
           promoDiscount: product.promoDiscount || 0,
@@ -126,19 +142,25 @@ export const createCartSlice: StateCreator<CartSlice> = (set, get) => ({
       }
     } catch (error) {
       console.error('Failed to sync cart to server:', error);
+      const totals = get().recalculateTotals(items);
+      set({ items, ...totals });
+      throw error;
     }
   },
 
-  removeItem: async (productId: string) => {
-    const newItems = get().items.filter((item) => item.productId !== productId);
+  removeItem: async (productId: string, variantId?: string) => {
+    const newItems = get().items.filter(
+      (item) => !sameCartItem(item, productId, variantId)
+    );
     const { totalItems, totalPrice } = get().recalculateTotals(newItems);
     set({ items: newItems, totalItems, totalPrice });
 
     if (!isAuthed()) return;
 
     try {
-      const response = await apiFetch(`/cart/${productId}`, {
+      const response = await apiFetch('/cart/item', {
         method: 'DELETE',
+        body: { productId, variantId: variantId || '' },
       });
       if (response.data.success && response.data.cart) {
         const serverItems = mapServerItems(response.data.cart.items);
@@ -150,13 +172,19 @@ export const createCartSlice: StateCreator<CartSlice> = (set, get) => ({
     }
   },
 
-  updateQuantity: async (productId: string, quantity: number) => {
+  updateQuantity: async (
+    productId: string,
+    quantity: number,
+    variantId?: string
+  ) => {
     if (quantity <= 0) {
-      await get().removeItem(productId);
+      await get().removeItem(productId, variantId);
       return;
     }
     const newItems = get().items.map((item) =>
-      item.productId === productId ? { ...item, quantity } : item
+      sameCartItem(item, productId, variantId)
+        ? { ...item, quantity }
+        : item
     );
     const { totalItems, totalPrice } = get().recalculateTotals(newItems);
     set({ items: newItems, totalItems, totalPrice });
@@ -166,7 +194,7 @@ export const createCartSlice: StateCreator<CartSlice> = (set, get) => ({
     try {
       const response = await apiFetch('/cart', {
         method: 'PUT',
-        body: { productId, quantity },
+        body: { productId, variantId: variantId || '', quantity },
       });
       if (response.data.success && response.data.cart) {
         const serverItems = mapServerItems(response.data.cart.items);
@@ -206,6 +234,7 @@ export const createCartSlice: StateCreator<CartSlice> = (set, get) => ({
           method: 'POST',
           body: {
             productId: item.productId,
+            variantId: item.variantId || '',
             name: item.name,
             price: item.price,
             promoDiscount: item.promoDiscount || 0,

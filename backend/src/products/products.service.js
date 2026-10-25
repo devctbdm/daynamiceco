@@ -280,7 +280,16 @@ class ProductsService {
       throw badRequest("Please provide a product price");
     }
     const price = nonnegativeNumber(input.price, "Price cannot be negative");
-    const images = (files ?? []).map((file) => file.path).filter(Boolean);
+    const allFiles = Array.isArray(files)
+      ? files
+      : files && typeof files === "object"
+        ? Object.values(files).flat()
+        : [];
+    const mainImages = allFiles
+      .filter((file) => file.fieldname === "images")
+      .map((file) => file.path)
+      .filter(Boolean);
+    const images = mainImages;
     if (!images.length) throw badRequest("Please provide at least one image");
     const parsedCategories = parseArray(input.categories);
     const category = requiredText(
@@ -288,6 +297,27 @@ class ProductsService {
       "Please provide a category",
     );
     const now = new Date();
+    const variantsInput = parseJsonValue(input.variants, []);
+    const processedVariants = Array.isArray(variantsInput)
+      ? variantsInput
+          .map((variant, idx) => {
+            const variantFiles = allFiles
+              .filter((file) => file.fieldname === `variantImages_${idx}`)
+              .map((file) => file.path)
+              .filter(Boolean);
+            const variantImages =
+              variantFiles.length > 0
+                ? variantFiles
+                : Array.isArray(variant.images)
+                  ? variant.images.filter(Boolean)
+                  : [];
+            return {
+              ...variant,
+              images: variantImages,
+              _variantImagesUploaded: variantFiles.length > 0,
+            };
+          })
+      : variantsInput;
     const product = {
       id: randomBytes(12).toString("hex"),
       name,
@@ -325,6 +355,7 @@ class ProductsService {
       seo: normalizeSeo(input, name, description),
       ratings: [],
       averageRating: 0,
+      variants: parseVariants(shareVariantImagesByColor(processedVariants)),
       createdBy: String(userId),
       createdAt: now,
       updatedAt: now,
@@ -352,6 +383,11 @@ class ProductsService {
     if (!existingRow) throw productNotFound();
     const existing = serializeProduct(existingRow);
     const updates = {};
+    const allFiles = Array.isArray(files)
+      ? files
+      : files && typeof files === "object"
+        ? Object.values(files).flat()
+        : [];
 
     if (input.name !== undefined) {
       updates.name = requiredText(
@@ -418,7 +454,30 @@ class ProductsService {
     if (input.holiday !== undefined)
       updates.holiday = parseBoolean(input.holiday);
     if (input.pcPart !== undefined) updates.pcPart = parsePcPart(input.pcPart);
-    if (input.specifications) {
+    if (input.variants !== undefined) {
+      const variantsInput = parseJsonValue(input.variants, input.variants);
+      const processedVariants = Array.isArray(variantsInput)
+        ? shareVariantImagesByColor(variantsInput.map((variant, idx) => {
+            const variantFiles = allFiles
+              .filter((file) => file.fieldname === `variantImages_${idx}`)
+              .map((file) => file.path)
+              .filter(Boolean);
+            const variantImages =
+              variantFiles.length > 0
+                ? variantFiles
+                : Array.isArray(variant.images)
+                  ? variant.images.filter(Boolean)
+                  : [];
+            return {
+              ...variant,
+              images: variantImages,
+              _variantImagesUploaded: variantFiles.length > 0,
+            };
+          }))
+        : variantsInput;
+      updates.variants = parseVariants(processedVariants);
+    }
+    if (input.specifications !== undefined) {
       updates.specifications = parseJsonValue(
         input.specifications,
         input.specifications,
@@ -460,7 +519,8 @@ class ProductsService {
       }
     }
 
-    const uploadedImages = (files ?? [])
+    const uploadedImages = allFiles
+      .filter((file) => file.fieldname === "images")
       .map((file) => file.path)
       .filter(Boolean);
     if (uploadedImages.length) {
@@ -677,6 +737,150 @@ function parsePcPart(value) {
   };
 }
 
+function shareVariantImagesByColor(value) {
+  if (!Array.isArray(value)) return value;
+  const imagesByColor = new Map();
+
+  for (const variant of value) {
+    const color = stringValue(variant?.color).trim().toLowerCase();
+    if (color && variant?._variantImagesUploaded && variant.images?.length) {
+      imagesByColor.set(color, variant.images);
+    }
+  }
+
+  for (const variant of value) {
+    const color = stringValue(variant?.color).trim().toLowerCase();
+    if (color && !imagesByColor.has(color) && variant?.images?.length) {
+      imagesByColor.set(color, variant.images);
+    }
+  }
+
+  return value.map((variant) => {
+    const color = stringValue(variant?.color).trim().toLowerCase();
+    const { _variantImagesUploaded, ...cleanVariant } = variant;
+    return color && imagesByColor.has(color)
+      ? { ...cleanVariant, images: imagesByColor.get(color) }
+      : cleanVariant;
+  });
+}
+
+function parseVariants(value) {
+  let data = value;
+  if (typeof value === "string") {
+    try {
+      data = JSON.parse(value);
+    } catch {
+      data = [];
+    }
+  }
+  if (!Array.isArray(data)) return [];
+  const variants = data
+    .filter((v) => v && typeof v === "object")
+    .map((v) => {
+      const color = stringValue(v.color) || stringValue(v.name) || "";
+      const price =
+        v.price !== undefined && v.price !== null && v.price !== ""
+          ? nonnegativeNumber(v.price, "Variant price cannot be negative")
+          : undefined;
+      const stock =
+        v.stock !== undefined && v.stock !== null && v.stock !== ""
+          ? nonnegativeNumber(v.stock, "Variant stock cannot be negative")
+          : undefined;
+      const sku = optionalText(v.sku) || "";
+      const enabled = v.enabled === undefined ? true : parseBoolean(v.enabled);
+      const variant = {
+        _id: v._id ? String(v._id) : randomBytes(6).toString("hex"),
+        color,
+        colorCode: stringValue(v.colorCode) || stringValue(v.hex) || "",
+        storage: stringValue(v.storage) || stringValue(v.variantStorage) || "",
+        ram: stringValue(v.ram) || stringValue(v.variantRam) || "",
+        images: Array.isArray(v.images) ? v.images.filter(Boolean).map(String) : [],
+        price,
+        discountPrice:
+          v.discountPrice !== undefined &&
+          v.discountPrice !== null &&
+          v.discountPrice !== ""
+            ? nonnegativeNumber(
+                v.discountPrice,
+                "Variant discount price cannot be negative",
+              )
+            : 0,
+        stock: stock ?? 0,
+        sku,
+        enabled,
+        attributes:
+          v.attributes &&
+          typeof v.attributes === "object" &&
+          !Array.isArray(v.attributes)
+            ? v.attributes
+            : {},
+      };
+
+      if (
+        enabled &&
+        (variant.color || variant.storage || variant.ram) &&
+        (price === undefined ||
+          price <= 0 ||
+          stock === undefined ||
+          !sku.trim())
+      ) {
+        throw badRequest(
+          "Each enabled product combination needs a price, stock quantity, and SKU",
+        );
+      }
+      if (
+        variant.discountPrice > 0 &&
+        price !== undefined &&
+        variant.discountPrice >= price
+      ) {
+        throw badRequest(
+          "A combination discount price must be less than its regular price",
+        );
+      }
+      return variant;
+    })
+    .filter((v) => v.color || v.storage || v.ram);
+
+  const combinations = new Set();
+  const skus = new Set();
+  const tierPrices = new Map();
+  for (const variant of variants.filter((entry) => entry.enabled)) {
+    const combination = [
+      variant.color,
+      variant.storage,
+      variant.ram,
+    ].map((value) => value.trim().toLowerCase()).join("|");
+    const sku = variant.sku.trim().toLowerCase();
+    if (combinations.has(combination)) {
+      throw badRequest("Product combinations must be unique");
+    }
+    if (sku && skus.has(sku)) {
+      throw badRequest("Variant SKUs must be unique");
+    }
+    const tier = [variant.storage, variant.ram]
+      .map((value) => value.trim().toLowerCase())
+      .join("|");
+    const tierPrice = {
+      price: variant.price,
+      discountPrice: variant.discountPrice,
+    };
+    const existingTierPrice = tierPrices.get(tier);
+    if (
+      existingTierPrice &&
+      (existingTierPrice.price !== tierPrice.price ||
+        existingTierPrice.discountPrice !== tierPrice.discountPrice)
+    ) {
+      throw badRequest(
+        "All colors must use the same price for each storage/RAM option",
+      );
+    }
+    combinations.add(combination);
+    if (sku) skus.add(sku);
+    tierPrices.set(tier, tierPrice);
+  }
+  return variants;
+}
+
 function parseJsonValue(value, fallback) {
   if (typeof value !== "string") return value;
   try {
@@ -815,5 +1019,7 @@ export {
   calculateAverageRating,
   parseArray,
   parsePcPart,
+  parseVariants,
   productCloudinaryPublicId,
+  shareVariantImagesByColor,
 };

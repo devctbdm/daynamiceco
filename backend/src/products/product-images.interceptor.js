@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { uploadMultiple } from "../middleware/upload.js";
+import { productUpload } from "../middleware/upload.js";
 
 class ProductImagesInterceptor {
   async intercept(context, next) {
@@ -9,7 +9,7 @@ class ProductImagesInterceptor {
 
     try {
       await new Promise((resolve, reject) => {
-        uploadMultiple(request, response, (error) => {
+        productUpload.any()(request, response, (error) => {
           if (error) reject(error);
           else resolve();
         });

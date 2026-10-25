@@ -51,6 +51,8 @@ export const shoppingCartItems = pgTable(
       .notNull()
       .references(() => shoppingCarts.id, { onDelete: "cascade" }),
     productId: text("product_id").notNull(),
+    variantId: text("variant_id").notNull().default(""),
+    variantLabel: text("variant_label").notNull().default(""),
     name: text("name").notNull(),
     price: numeric("price", {
       precision: 12,
@@ -74,9 +76,10 @@ export const shoppingCartItems = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("shopping_cart_items_cart_product_unique").on(
+    uniqueIndex("shopping_cart_items_cart_product_variant_unique").on(
       table.cartId,
       table.productId,
+      table.variantId,
     ),
     index("shopping_cart_items_product_id_index").on(table.productId),
     check("shopping_cart_items_price_nonnegative", sql`${table.price} >= 0`),

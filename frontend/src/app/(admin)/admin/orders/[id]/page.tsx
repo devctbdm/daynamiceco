@@ -270,7 +270,7 @@ export default function OrderDetailPage() {
     if (!win) { toast.error('Allow popups to print invoices'); return; }
     const rows = order.items.map((it) => `
       <tr>
-        <td style="padding:8px;border-bottom:1px solid #eee">${it.name}</td>
+        <td style="padding:8px;border-bottom:1px solid #eee">${it.name}${it.variantLabel ? ` (${it.variantLabel})` : ''}${it.sku ? ` · SKU: ${it.sku}` : ''}</td>
         <td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${it.quantity}</td>
         <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">৳${it.price.toLocaleString()}</td>
         <td style="padding:8px;border-bottom:1px solid #eee;text-align:right">৳${(it.price * it.quantity).toLocaleString()}</td>
@@ -382,6 +382,12 @@ export default function OrderDetailPage() {
                         )}
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm">{item.name}</p>
+                          {(item.variantLabel || item.sku) && (
+                            <p className="text-xs text-muted-foreground">
+                              {[item.variantLabel, item.sku && `SKU: ${item.sku}`]
+                                .filter(Boolean).join(' · ')}
+                            </p>
+                          )}
                           <p className="text-xs text-muted-foreground">
                             {fmt(item.price)} × {item.quantity}
                           </p>

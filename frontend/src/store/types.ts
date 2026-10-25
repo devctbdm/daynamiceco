@@ -1,5 +1,8 @@
 export interface CartItem {
   productId: string;
+  variantId?: string;
+  variantLabel?: string;
+  sku?: string;
   name: string;
   price: number;
   promoDiscount: number; // Per-unit discount from the product's sale price

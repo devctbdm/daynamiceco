@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { notFound } from 'next/navigation';
-import { productApi } from '@/lib/api';
-import type { Category } from '@/lib/api';
+import { productApi, productFilterApi } from '@/lib/api';
+import type { Category, ProductFilterSettings } from '@/lib/api';
 import { categoriesResource } from '@/lib/resources';
 import { toProductShape, type RawProduct } from '@/lib/productMapper';
 import { ProductGrid } from '@/components/store/product/ProductGrid';
@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/pagination';
 import {
   applyFilters,
+  EMPTY_FILTERS,
   sortProducts,
   type FilterState,
   type SortOption,
@@ -87,6 +88,9 @@ export default function CategoryPage({ params }: Props) {
   const [slug, setSlug] = useState<string[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<RawProduct[]>([]);
+  const [filterSettings, setFilterSettings] = useState<ProductFilterSettings[]>(
+    []
+  );
   const [filters, setFilters] = useState<FilterState>({
     price: null,
     availability: [],
@@ -107,9 +111,16 @@ export default function CategoryPage({ params }: Props) {
           productApi.getAll({ limit: 1000 }),
         ]);
         setCategories(cats || []);
-        setProducts(prodRes.data.products || []);
-      } catch {
+        setProducts(prodRes?.data?.products || []);
+        try {
+          const filterRes = await productFilterApi.getAll();
+          setFilterSettings(filterRes?.data?.settings || []);
+        } catch (err) {
+          console.error('Failed to load product filter settings:', err);
+        }
+      } catch (err) {
         // leave empty on failure
+        console.error('Failed to load category page data:', err);
       } finally {
         setLoading(false);
       }
@@ -156,6 +167,35 @@ export default function CategoryPage({ params }: Props) {
         .map(toProductShape),
     [products, scopeNames]
   );
+  const activeFilterSettings =
+    filterSettings.find(
+      (item) =>
+        item.categoryId === (scopeId ?? 'all') &&
+        (item.brand ?? '').trim().toLocaleLowerCase() ===
+          (filters.specs.Brand?.length === 1
+            ? filters.specs.Brand[0].toLocaleLowerCase()
+            : '')
+    ) ??
+    filterSettings.find(
+      (item) =>
+        item.categoryId === (scopeId ?? 'all') && !(item.brand ?? '').trim()
+    ) ??
+    (filters.specs.Brand?.length === 1
+      ? filterSettings.find(
+          (item) =>
+            item.categoryId === 'all' &&
+            (item.brand ?? '').trim().toLocaleLowerCase() ===
+              filters.specs.Brand[0].toLocaleLowerCase()
+        )
+      : undefined) ??
+    filterSettings.find(
+      (item) => item.categoryId === 'all' && !(item.brand ?? '').trim()
+    ) ??
+    null;
+
+  useEffect(() => {
+    setFilters(EMPTY_FILTERS);
+  }, [scopeId]);
 
   const filteredProducts = useMemo(
     () => sortProducts(applyFilters(scopedProducts, filters), sort),
@@ -247,6 +287,7 @@ export default function CategoryPage({ params }: Props) {
                 products={scopedProducts}
                 filters={filters}
                 onChange={setFilters}
+                settings={activeFilterSettings}
               />
             </div>
           </aside>

@@ -39,7 +39,19 @@ class CartController {
       cart: await this.cartService.updateItem(
         userId(request),
         body?.productId,
+        body?.variantId || "",
         body?.quantity,
+      ),
+    };
+  }
+
+  async removeCartItem(request, body) {
+    return {
+      success: true,
+      cart: await this.cartService.removeItem(
+        userId(request),
+        body?.productId,
+        body?.variantId || "",
       ),
     };
   }
@@ -97,6 +109,14 @@ Put()(
 );
 Req()(CartController.prototype, "updateCartItem", 0);
 Body()(CartController.prototype, "updateCartItem", 1);
+
+Delete("item")(
+  CartController.prototype,
+  "removeCartItem",
+  Object.getOwnPropertyDescriptor(CartController.prototype, "removeCartItem"),
+);
+Req()(CartController.prototype, "removeCartItem", 0);
+Body()(CartController.prototype, "removeCartItem", 1);
 
 Delete("clear")(
   CartController.prototype,

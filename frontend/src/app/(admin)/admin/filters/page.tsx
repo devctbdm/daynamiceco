@@ -1,5 +1,5 @@
-const SidebarFiltersCms = () => {
-  return <div>sider filters</div>;
-};
+import { ProductFiltersCms } from './_components/ProductFiltersCms';
 
-export default SidebarFiltersCms;
+export default function ProductFiltersPage() {
+  return <ProductFiltersCms />;
+}

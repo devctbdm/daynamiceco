@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card'
 
 interface ImageUploaderProps {
   value: string[]
-  onChange: (images: string[]) => void
+  onChange: (images: any[]) => void
   files?: File[]
   onFilesChange?: (files: File[]) => void
 }
@@ -38,6 +38,7 @@ export function ImageUploader({ value, onChange, files = [], onFilesChange }: Im
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     processFiles(files)
+    e.target.value = ''
   }, [])
 
   const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -52,44 +53,48 @@ export function ImageUploader({ value, onChange, files = [], onFilesChange }: Im
       return
     }
 
-    if (imageFiles.length > 10) {
+    if (value.length + imageFiles.length > 10) {
       setError('Maximum 10 images allowed')
       return
     }
 
     const newUrls = imageFiles.map(file => URL.createObjectURL(file))
-    onChange([...value, ...newUrls])
-    onFilesChange?.([...files, ...imageFiles])
+    onChange([...(value || []), ...newUrls])
+    onFilesChange?.([...(files || []), ...imageFiles])
   }
 
   const removeImage = (index: number) => {
-    const newImages = value.filter((_, i) => i !== index)
+    const newImages = (value || []).filter((_, i) => i !== index)
     onChange(newImages)
-    onFilesChange?.(files.filter((_, i) => i !== index))
+    onFilesChange?.((files || []).filter((_, i) => i !== index))
   }
 
   const setAsMain = (index: number) => {
     if (index === 0) return
-    const newImages = [...value]
+    const newImages = [...(value || [])]
     const [mainImage] = newImages.splice(index, 1)
     newImages.unshift(mainImage)
     onChange(newImages)
-    const newFiles = [...files]
-    const [movedFile] = newFiles.splice(index, 1)
-    newFiles.unshift(movedFile)
-    onFilesChange?.(newFiles)
+    const newFiles = [...(files || [])]
+    if (newFiles.length > index) {
+      const [movedFile] = newFiles.splice(index, 1)
+      newFiles.unshift(movedFile)
+      onFilesChange?.(newFiles)
+    }
   }
 
   const moveImage = (fromIndex: number, toIndex: number) => {
-    if (toIndex < 0 || toIndex >= value.length) return
-    const newImages = [...value]
+    if (toIndex < 0 || toIndex >= (value || []).length) return
+    const newImages = [...(value || [])]
     const [movedImage] = newImages.splice(fromIndex, 1)
     newImages.splice(toIndex, 0, movedImage)
     onChange(newImages)
-    const newFiles = [...files]
-    const [movedFile] = newFiles.splice(fromIndex, 1)
-    newFiles.splice(toIndex, 0, movedFile)
-    onFilesChange?.(newFiles)
+    const newFiles = [...(files || [])]
+    if (newFiles.length > fromIndex) {
+      const [movedFile] = newFiles.splice(fromIndex, 1)
+      newFiles.splice(toIndex, 0, movedFile)
+      onFilesChange?.(newFiles)
+    }
   }
 
   return (
@@ -141,7 +146,7 @@ export function ImageUploader({ value, onChange, files = [], onFilesChange }: Im
       {/* Image Grid */}
       {value.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          {value.map((image, index) => (
+          {(value || []).map((image: any, index: number) => (
             <Card key={index} className="relative group overflow-hidden">
               <div className="relative aspect-square">
                 <img
@@ -182,7 +187,7 @@ export function ImageUploader({ value, onChange, files = [], onFilesChange }: Im
                       ←
                     </Button>
                   )}
-                  {index < value.length - 1 && (
+                  {index < (value || []).length - 1 && (
                     <Button
                       size="sm"
                       variant="secondary"

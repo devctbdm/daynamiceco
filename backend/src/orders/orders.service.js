@@ -11,7 +11,10 @@ import { getDatabase } from "../db/database.js";
 import { customerOrders } from "../db/schema.js";
 import {
   changeProductStock,
+  changeProductVariantStock,
+  assertProductPurchaseStock,
   findProductById,
+  resolveProductPurchase,
 } from "../products/products.repository.js";
 import {
   computePromoItemDiscount,
@@ -316,6 +319,7 @@ class OrdersService {
       await this.restoreStock(
         order.items.map((item) => ({
           product: String(item.product?._id ?? item.product),
+          ...(item.variantId ? { variantId: item.variantId } : {}),
           quantity: item.quantity,
         })),
       );
@@ -521,21 +525,30 @@ class OrdersService {
             message: `Product "${product.name}" is not available`,
           });
         }
-        if (product.stock < quantity) {
-          throw new BadRequestException({
-            success: false,
-            message: `Insufficient stock for ${product.name}`,
-          });
-        }
-        const price =
-          product.discountPrice > 0 ? product.discountPrice : product.price;
+        const variantId =
+          typeof item?.variantId === "string" ? item.variantId : "";
+        const purchase = resolveProductPurchase(product, variantId);
+        const { variant, price, image, variantLabel } = purchase;
+        assertProductPurchaseStock(purchase, quantity, product.name);
         subtotal += price * quantity;
         items.push({
           product: String(product._id),
           name: product.name,
           price,
           quantity,
-          image: product.images[0] || "",
+          image,
+          ...(variant
+            ? {
+                variantId: variant._id,
+                variantLabel,
+                sku: purchase.sku,
+                variant: {
+                  color: variant.color || "",
+                  storage: variant.storage || "",
+                  ram: variant.ram || "",
+                },
+              }
+            : {}),
         });
         promoItems.push({
           categories:
@@ -547,19 +560,31 @@ class OrdersService {
           price,
           quantity,
         });
-        const stockUpdated = await changeProductStock(
-          product._id,
-          -quantity,
-          { requireAvailable: true },
-          this.database,
-        );
+        const stockUpdated = variant
+          ? await changeProductVariantStock(
+              product._id,
+              variant._id,
+              -quantity,
+              { requireAvailable: true },
+              this.database,
+            )
+          : await changeProductStock(
+              product._id,
+              -quantity,
+              { requireAvailable: true },
+              this.database,
+            );
         if (!stockUpdated) {
           throw new BadRequestException({
             success: false,
-            message: `Insufficient stock for ${product.name}`,
+            message: `Insufficient stock for ${product.name}${variantLabel ? ` (${variantLabel})` : ""}`,
           });
         }
-        deducted.push({ product: String(product._id), quantity });
+        deducted.push({
+          product: String(product._id),
+          ...(variant ? { variantId: variant._id } : {}),
+          quantity,
+        });
       }
     } catch (error) {
       await this.restoreStock(deducted);
@@ -601,7 +626,17 @@ class OrdersService {
 
   async restoreStock(items) {
     for (const item of items) {
-      await changeProductStock(item.product, item.quantity, {}, this.database);
+      if (item.variantId) {
+        await changeProductVariantStock(
+          item.product,
+          item.variantId,
+          item.quantity,
+          {},
+          this.database,
+        );
+      } else {
+        await changeProductStock(item.product, item.quantity, {}, this.database);
+      }
     }
   }
 

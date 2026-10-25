@@ -4,6 +4,8 @@ import {
   EMPTY_FORM_VALUE,
   ProductForm,
   ProductFormValue,
+  serializeProductVariants,
+  validateVariantCombinations,
 } from '@/components/admin/products/ProductForm';
 import { SiteHeader } from '@/components/site-header';
 import { Button } from '@/components/ui/button';
@@ -42,6 +44,11 @@ export default function NewProductPage() {
     }
     if (!form.categories.length) {
       toast.error('Please select at least one category');
+      return;
+    }
+    const variantError = validateVariantCombinations(form.variants);
+    if (variantError) {
+      toast.error(variantError);
       return;
     }
 
@@ -86,17 +93,13 @@ export default function NewProductPage() {
         );
 
       const specs: Record<string, any> = {
-        _keySpecs: {},
         _keyFeatures: {},
         _specGroups: {},
       };
       if (form.brand) {
-        specs._keySpecs.Brand = form.brand;
+        specs._keyFeatures.Brand = form.brand;
         specs.brand = form.brand;
       }
-      form.keySpecs.forEach((s) => {
-        if (s.label) specs._keySpecs[s.label] = s.value;
-      });
       form.keyFeatures.forEach((f) => {
         if (f.label) specs._keyFeatures[f.label] = f.value;
       });
@@ -109,8 +112,15 @@ export default function NewProductPage() {
       fd.append('specifications', JSON.stringify(specs));
       if (form.content) fd.append('content', form.content);
       fd.append('pcPart', JSON.stringify(form.pcPart));
+      const variantsForSubmit = serializeProductVariants(form.variants);
+      fd.append('variants', JSON.stringify(variantsForSubmit));
+      (form.variants || []).forEach((v, idx) => {
+        if (v._files && v._files.length > 0) {
+          v._files.forEach((file: File) => fd.append(`variantImages_${idx}`, file));
+        }
+      });
 
-      imageFiles.forEach((file) => fd.append('images', file));
+      (imageFiles || []).forEach((file: File) => fd.append('images', file));
 
       const { data } = await productApi.create(fd);
       if (data.success) {

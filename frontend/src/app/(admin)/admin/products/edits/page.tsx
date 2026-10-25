@@ -6,6 +6,8 @@ import {
   ProductFormValue,
   contentToHtml,
   parseSpecifications,
+  serializeProductVariants,
+  validateVariantCombinations,
 } from '@/components/admin/products/ProductForm';
 import { SiteHeader } from '@/components/site-header';
 import { Button } from '@/components/ui/button';
@@ -61,7 +63,7 @@ export default function EditsProductsPage() {
             brand:
               p.brand ||
               p.specifications?.brand ||
-              p.specifications?._keySpecs?.Brand ||
+              p.specifications?._keyFeatures?.Brand ||
               '',
             slug: p.slug || '',
             metaTitle: p.seo?.metaTitle || '',
@@ -82,7 +84,6 @@ export default function EditsProductsPage() {
             holiday: p.holiday || false,
             description: p.description || '',
             images: p.images || [],
-            keySpecs: parsed.keySpecs,
             keyFeatures: parsed.keyFeatures,
             specs: parsed.specGroups,
             content: existingContent,
@@ -97,6 +98,24 @@ export default function EditsProductsPage() {
                   specs: p.pcPart.specs || {},
                 }
               : { ...EMPTY_FORM_VALUE.pcPart },
+            variants: Array.isArray(p.variants)
+              ? p.variants.map((v: any, idx: number) => ({
+                  id: v._id || `v_${idx}`,
+                  color: v.color || '',
+                  colorCode: v.colorCode || '#000000',
+                  storage: v.storage || v.variantStorage || '',
+                  ram: v.ram || v.variantRam || '',
+                  images: Array.isArray(v.images) ? v.images : [],
+                  price: v.price !== undefined && v.price !== null ? String(v.price) : '',
+                  discountPrice:
+                    v.discountPrice !== undefined && v.discountPrice !== null
+                      ? String(v.discountPrice)
+                      : '',
+                  stock: v.stock !== undefined && v.stock !== null ? String(v.stock) : '',
+                  sku: v.sku || '',
+                  enabled: v.enabled !== false,
+                }))
+              : [],
           });
         } else {
           toast.error('Product not found');
@@ -117,6 +136,11 @@ export default function EditsProductsPage() {
     }
     if (!form.categories.length) {
       toast.error('Please select at least one category');
+      return;
+    }
+    const variantError = validateVariantCombinations(form.variants);
+    if (variantError) {
+      toast.error(variantError);
       return;
     }
 
@@ -161,17 +185,13 @@ export default function EditsProductsPage() {
         );
 
       const specs: Record<string, any> = {
-        _keySpecs: {},
         _keyFeatures: {},
         _specGroups: {},
       };
       if (form.brand) {
-        specs._keySpecs.Brand = form.brand;
+        specs._keyFeatures.Brand = form.brand;
         specs.brand = form.brand;
       }
-      form.keySpecs.forEach((s) => {
-        if (s.label) specs._keySpecs[s.label] = s.value;
-      });
       form.keyFeatures.forEach((f) => {
         if (f.label) specs._keyFeatures[f.label] = f.value;
       });
@@ -184,8 +204,15 @@ export default function EditsProductsPage() {
       fd.append('specifications', JSON.stringify(specs));
       fd.append('content', form.content ?? '');
       fd.append('pcPart', JSON.stringify(form.pcPart));
+      const variantsForSubmit = serializeProductVariants(form.variants);
+      fd.append('variants', JSON.stringify(variantsForSubmit));
+      (form.variants || []).forEach((v, idx) => {
+        if ((v as any)._files && (v as any)._files.length > 0) {
+          (v as any)._files.forEach((file: File) => fd.append(`variantImages_${idx}`, file));
+        }
+      });
 
-      imageFiles.forEach((file) => fd.append('images', file));
+      (imageFiles || []).forEach((file: File) => fd.append('images', file));
 
       const { data } = await productApi.update(productId!, fd);
       if (data.success) {

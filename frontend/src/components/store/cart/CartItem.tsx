@@ -55,7 +55,7 @@ export const CartItemCard = ({ item }: Props) => {
             </p>
             <motion.button
               type="button"
-              onClick={() => removeItem(item.productId)}
+              onClick={() => removeItem(item.productId, item.variantId)}
               aria-label={`Remove ${item.name} from cart`}
               whileTap={{ scale: 0.85 }}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-red-50 hover:text-red-600"
@@ -63,6 +63,14 @@ export const CartItemCard = ({ item }: Props) => {
               <Trash2 size={16} />
             </motion.button>
           </div>
+
+          {(item.variantLabel || item.sku) && (
+            <p className="mt-1 text-xs text-gray-500">
+              {[item.variantLabel, item.sku && `SKU: ${item.sku}`]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          )}
 
           <p className="mt-1 text-sm text-gray-500">
             Unit price: ৳{item.price.toLocaleString()}
@@ -79,7 +87,7 @@ export const CartItemCard = ({ item }: Props) => {
                 type="button"
                 whileTap={{ scale: 0.8 }}
                 onClick={() =>
-                  updateQuantity(item.productId, item.quantity - 1)
+                  updateQuantity(item.productId, item.quantity - 1, item.variantId)
                 }
                 className="flex h-9 w-9 items-center justify-center text-gray-500 transition hover:text-gray-900"
                 aria-label="Decrease quantity"
@@ -99,7 +107,7 @@ export const CartItemCard = ({ item }: Props) => {
                 type="button"
                 whileTap={{ scale: 0.8 }}
                 onClick={() =>
-                  updateQuantity(item.productId, item.quantity + 1)
+                  updateQuantity(item.productId, item.quantity + 1, item.variantId)
                 }
                 disabled={item.quantity >= item.stock}
                 className="flex h-9 w-9 items-center justify-center text-gray-500 transition hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40"

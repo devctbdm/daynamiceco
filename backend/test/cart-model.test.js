@@ -16,6 +16,15 @@ test("cart tables use normalized PostgreSQL columns", () => {
 
   assert.equal(item.name, "shopping_cart_items");
   assert.ok(item.columns.some((column) => column.name === "promo_discount"));
-  assert.ok(item.indexes.some((index) => index.config.unique));
+  assert.ok(item.columns.some((column) => column.name === "variant_id"));
+  assert.ok(item.columns.some((column) => column.name === "variant_label"));
+  assert.ok(
+    item.indexes.some(
+      (index) =>
+        index.config.unique &&
+        index.config.columns.map((column) => column.name).join(",") ===
+          "cart_id,product_id,variant_id",
+    ),
+  );
   assert.equal(item.foreignKeys.length, 1);
 });

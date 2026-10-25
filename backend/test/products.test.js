@@ -5,8 +5,10 @@ import { productEntries } from "../src/models/Product.js";
 import {
   calculateAverageRating,
   parsePcPart,
+  parseVariants,
   productCloudinaryPublicId,
   ProductsService,
+  shareVariantImagesByColor,
 } from "../src/products/products.service.js";
 import { serializeProduct } from "../src/products/products.repository.js";
 
@@ -40,6 +42,7 @@ test("product table uses normalized columns, indexes, and validation checks", ()
       "seo",
       "ratings",
       "average_rating",
+      "variants",
       "created_by",
       "created_at",
       "updated_at",
@@ -181,5 +184,87 @@ test("product image cleanup only resolves assets in its Cloudinary folder", () =
       "https://example.com/apple-it-zone/products/item-1",
     ),
     null,
+  );
+});
+
+test("variant images are shared by color but remain separate across colors", () => {
+  const result = shareVariantImagesByColor([
+    {
+      color: "Black",
+      storage: "256 GB",
+      images: ["black-front.webp"],
+    },
+    {
+      color: "black",
+      storage: "512 GB",
+      images: ["old-black-image.webp"],
+      _variantImagesUploaded: true,
+    },
+    {
+      color: "Orange",
+      storage: "256 GB",
+      images: ["orange-front.webp"],
+    },
+    {
+      color: "",
+      storage: "1 TB",
+      images: ["uncolored-tier.webp"],
+    },
+  ]);
+
+  assert.deepEqual(result[0].images, ["old-black-image.webp"]);
+  assert.deepEqual(result[1].images, ["old-black-image.webp"]);
+  assert.deepEqual(result[2].images, ["orange-front.webp"]);
+  assert.deepEqual(result[3].images, ["uncolored-tier.webp"]);
+  assert.equal("_variantImagesUploaded" in result[1], false);
+});
+
+test("variant prices are shared across colors for the same storage/RAM tier", () => {
+  const samePriceByTier = parseVariants([
+    {
+      _id: "black-256",
+      color: "Black",
+      storage: "256 GB",
+      ram: "12 GB",
+      price: 250000,
+      stock: 2,
+      sku: "BLACK-256",
+    },
+    {
+      _id: "orange-256",
+      color: "Orange",
+      storage: "256 GB",
+      ram: "12 GB",
+      price: 250000,
+      stock: 3,
+      sku: "ORANGE-256",
+    },
+  ]);
+  assert.equal(samePriceByTier.length, 2);
+
+  assert.throws(
+    () =>
+      parseVariants([
+        {
+          color: "Black",
+          storage: "256 GB",
+          ram: "12 GB",
+          price: 250000,
+          stock: 2,
+          sku: "BLACK-256",
+        },
+        {
+          color: "Orange",
+          storage: "256 GB",
+          ram: "12 GB",
+          price: 255000,
+          stock: 3,
+          sku: "ORANGE-256",
+        },
+      ]),
+    (error) =>
+      error.getStatus() === 400 &&
+      error.getResponse().message ===
+        "All colors must use the same price for each storage/RAM option",
   );
 });

@@ -9,11 +9,13 @@ import { ProductCard } from './ProductCard';
 interface ProductGridProps {
   products: Product[];
   columns?: 2 | 3 | 4 | 5;
+  priorityFirstImage?: boolean;
 }
 
 export const ProductGrid: React.FC<ProductGridProps> = ({
   products,
   columns = 4,
+  priorityFirstImage = true,
 }) => {
   if (products.length === 0) {
     return (
@@ -37,9 +39,12 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
       animate="visible"
       className={`grid ${gridCols[columns]} gap-4 md:gap-6`}
     >
-      {products.map((product) => (
+      {products.map((product, index) => (
         <motion.div key={product._id} variants={fadeInItem}>
-          <ProductCard product={product} />
+          <ProductCard
+            product={product}
+            priorityImage={priorityFirstImage && index === 0}
+          />
         </motion.div>
       ))}
     </motion.div>

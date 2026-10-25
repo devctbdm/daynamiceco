@@ -258,6 +258,7 @@ const CheckoutContent = () => {
         const { data } = await orderApi.create({
           items: items.map((i) => ({
             product: i.productId,
+            variantId: i.variantId,
             quantity: i.quantity,
           })),
           shippingAddress: {

@@ -139,7 +139,7 @@ function SliderRow({
       <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
         <div
           className={`relative w-full shrink-0 overflow-hidden rounded-md border bg-muted sm:w-48 ${
-            slider.type === 'hero' ? 'aspect-[1.96/1]' : 'aspect-[5/4]'
+            slider.type === 'hero' ? 'aspect-[1.96/1]' : 'aspect-5/4'
           }`}
         >
           {slider.image ? (
@@ -237,7 +237,7 @@ function SliderRowSkeleton({
       <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
         <Skeleton
           className={`w-full shrink-0 rounded-md sm:w-48 ${
-            type === 'hero' ? 'aspect-[1.96/1]' : 'aspect-[5/4]'
+            type === 'hero' ? 'aspect-[1.96/1]' : 'aspect-5/4'
           }`}
         />
         <div className="min-w-0 flex-1 space-y-3">
@@ -284,7 +284,7 @@ function SliderSettingsSkeleton() {
       ].map((row) => (
         <div
           key={row.label}
-          className="flex items-center justify-between gap-4"
+          className="flex items-center justify-between gap-4 rounded-lg border p-4"
         >
           <div className="space-y-2">
             <Skeleton className="h-4 w-24" />
@@ -582,12 +582,12 @@ export default function SliderPage() {
               )}
             </Button>
           </CardHeader>
-          <CardContent className="grid gap-5 sm:grid-cols-3">
+          <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {loading ? (
               <SliderSettingsSkeleton />
             ) : (
               <>
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
                   <div>
                     <Label htmlFor="main-slider-toggle">Main slider</Label>
                     <p className="text-sm text-muted-foreground">
@@ -603,7 +603,7 @@ export default function SliderPage() {
                     }
                   />
                 </div>
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
                   <div>
                     <Label htmlFor="auto-slide-toggle">Auto-slide</Label>
                     <p className="text-sm text-muted-foreground">
@@ -619,7 +619,7 @@ export default function SliderPage() {
                     }
                   />
                 </div>
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
                   <div>
                     <Label htmlFor="slide-interval">Slide interval</Label>
                     <p className="text-sm text-muted-foreground">
@@ -795,7 +795,7 @@ export default function SliderPage() {
               </div>
               <div
                 className={`relative w-full overflow-hidden rounded-lg border bg-muted ${
-                  form.type === 'hero' ? 'aspect-[1.96/1]' : 'aspect-[5/4]'
+                  form.type === 'hero' ? 'aspect-[1.96/1]' : 'aspect-5/4'
                 }`}
               >
                 {form.image ? (

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { motion } from 'motion/react';
 import { productApi, questionApi } from '@/lib/api';
 import type { Product } from '@/types/product';
 import { RichTextView } from '@/components/RichTextView';
@@ -39,29 +40,11 @@ function renderSpecs(
   if (!specs || typeof specs !== 'object') return [];
 
   // new structured format
-  if (specs._keySpecs || specs._keyFeatures || specs._specGroups) {
+  if (specs._keyFeatures || specs._specGroups) {
     const sections: {
       label: string;
       items: { label: string; value: string }[];
     }[] = [];
-    if (specs._keySpecs && Object.keys(specs._keySpecs).length > 0) {
-      sections.push({
-        label: 'Key Specifications',
-        items: Object.entries(specs._keySpecs).map(([k, v]) => ({
-          label: k,
-          value: String(v),
-        })),
-      });
-    }
-    if (specs._keyFeatures && Object.keys(specs._keyFeatures).length > 0) {
-      sections.push({
-        label: 'Key Features',
-        items: Object.entries(specs._keyFeatures).map(([k, v]) => ({
-          label: k,
-          value: String(v),
-        })),
-      });
-    }
     if (specs._specGroups && Object.keys(specs._specGroups).length > 0) {
       for (const [groupName, fields] of Object.entries(specs._specGroups)) {
         if (typeof fields === 'object' && fields !== null) {
@@ -102,21 +85,13 @@ function renderSpecs(
   return sections;
 }
 
-// Pull short feature bullets from _keyFeatures (fall back to _keySpecs)
+// Pull short feature bullets from _keyFeatures
 function extractKeyFeatures(specs: Record<string, any>): string[] {
   if (!specs || typeof specs !== 'object') return [];
   const features = specs._keyFeatures;
   if (features && typeof features === 'object') {
-    const values = Object.entries(features)
+    return Object.entries(features)
       .filter(([, v]) => typeof v === 'string' || typeof v === 'number')
-      .map(([k, v]) => `${k}: ${v}`);
-    if (values.length > 0) return values;
-  }
-  const keySpecs = specs._keySpecs;
-  if (keySpecs && typeof keySpecs === 'object') {
-    return Object.entries(keySpecs)
-      .filter(([, v]) => typeof v === 'string' || typeof v === 'number')
-      .slice(0, 6)
       .map(([k, v]) => `${k}: ${v}`);
   }
   return [];
@@ -238,6 +213,18 @@ function formatDate(dateStr: string) {
   });
 }
 
+function isPurchasableVariant(
+  variant: NonNullable<Product['variants']>[number]
+) {
+  return (
+    Number(variant.stock || 0) > 0 &&
+    variant.price !== undefined &&
+    variant.price !== null &&
+    Number.isFinite(Number(variant.price)) &&
+    !!variant.sku?.trim()
+  );
+}
+
 export default function ProductDetail({
   product: initialProduct,
   related: initialRelated,
@@ -250,7 +237,26 @@ export default function ProductDetail({
   const [categoryPath] = useState<string[]>(initialCategoryPath);
   const [activeImage, setActiveImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
+  const [selectedVariant, setSelectedVariant] = useState<number | null>(() => {
+    const enabledVariants =
+      initialProduct.variants?.filter((variant) => variant.enabled !== false) ||
+      [];
+    const firstInStock = enabledVariants.findIndex(isPurchasableVariant);
+    return enabledVariants.length
+      ? firstInStock >= 0
+        ? firstInStock
+        : 0
+      : null;
+  });
   const { user } = useAuth();
+  const variants = Array.isArray(product?.variants)
+    ? product.variants.filter((v) => v && v.enabled !== false)
+    : [];
+  const hasVariantRows = Array.isArray(product?.variants)
+    ? product.variants.length > 0
+    : false;
+  const variant =
+    selectedVariant !== null ? variants[selectedVariant] || null : null;
 
   const [questions, setQuestions] = useState<any[]>([]);
   const [questionText, setQuestionText] = useState('');
@@ -276,6 +282,18 @@ export default function ProductDetail({
       loadQuestions(product._id);
     }
   }, [product?._id]);
+
+  useEffect(() => {
+    setActiveImage(0);
+  }, [selectedVariant]);
+
+  useEffect(() => {
+    if (variants.length > 0 && selectedVariant === null) {
+      setSelectedVariant(0);
+    } else if (selectedVariant !== null && selectedVariant >= variants.length) {
+      setSelectedVariant(variants.length > 0 ? 0 : null);
+    }
+  }, [variants.length, selectedVariant]);
 
   const handleAsk = async () => {
     if (!product) return;
@@ -354,24 +372,56 @@ export default function ProductDetail({
     );
   }
 
-  const finalPrice =
-    product.discountPrice > 0 ? product.discountPrice : product.price;
-  const hasDiscount =
-    product.discountPrice > 0 && product.discountPrice < product.price;
-  const discountPercent = hasDiscount
-    ? Math.round((1 - product.discountPrice / product.price) * 100)
+  const basePrice = product.price || 0;
+  const baseDiscountPrice = product.discountPrice || 0;
+  const variantBasePrice =
+    variant?.price !== undefined && variant.price !== null
+      ? Number(variant.price)
+      : undefined;
+  const variantDiscountPrice = Number(variant?.discountPrice || 0);
+  const finalPrice = hasVariantRows
+    ? variantBasePrice === undefined
+      ? 0
+      : variantDiscountPrice > 0 && variantDiscountPrice < variantBasePrice
+        ? variantDiscountPrice
+        : variantBasePrice
+    : baseDiscountPrice > 0
+      ? baseDiscountPrice
+      : basePrice;
+  const comparePrice = hasVariantRows
+    ? variantBasePrice
+    : baseDiscountPrice > 0
+      ? basePrice
+      : undefined;
+  const hasDiscount = comparePrice !== undefined && finalPrice < comparePrice;
+  const discountPercent = hasDiscount && comparePrice
+    ? Math.round((1 - finalPrice / comparePrice) * 100)
     : 0;
 
-  const inStock = product.stock > 0;
-  const stockText = inStock
-    ? `In Stock (${product.stock} available)`
+  const variantReady =
+    !hasVariantRows ||
+    (!!variant &&
+      variant.price !== undefined &&
+      variant.price !== null &&
+      Number.isFinite(Number(variant.price)) &&
+      variant.stock !== undefined &&
+      !!variant.sku?.trim());
+  const effectiveStock = hasVariantRows
+    ? variantReady
+      ? Number(variant?.stock ?? 0)
+      : 0
+    : Number(product.stock);
+  const inStock = variantReady && effectiveStock > 0;
+  const stockText = !variantReady
+    ? 'Combination unavailable'
+    : inStock
+    ? `In Stock (${effectiveStock} available)`
     : 'Out of Stock';
   const stockColor = inStock ? 'text-green-600' : 'text-red-600';
 
   const brand =
     product.brand ||
     product.specifications?.brand ||
-    product.specifications?._keySpecs?.Brand ||
     product.specifications?._keyFeatures?.Brand ||
     '—';
 
@@ -380,11 +430,62 @@ export default function ProductDetail({
     (r) => r.status === 'approved'
   ).length;
   const monthlyEmi = Math.round(finalPrice / 12);
-  const maxQty = inStock ? product.stock : 0;
+  const maxQty = inStock ? effectiveStock : 0;
   const currentQty = Math.min(Math.max(quantity, 1), maxQty || 1);
+  const variantColors = Array.from(
+    new Map(
+      variants
+        .filter((v) => Boolean(v.color))
+        .map((v) => [
+          v.color!,
+          { color: v.color!, colorCode: v.colorCode },
+        ])
+    ).values()
+  );
+  const variantOptions = variants
+    .map((candidate, index) => ({ candidate, index }))
+    .filter(
+      ({ candidate }) =>
+        (!variant?.color || candidate.color === variant.color) &&
+        Boolean(candidate.storage || candidate.ram)
+    );
+  const selectVariant = (
+    exact: (candidate: NonNullable<typeof variant>) => boolean,
+    fallback: (candidate: NonNullable<typeof variant>) => boolean
+  ) => {
+    const findIndex = (
+      predicate: (candidate: NonNullable<typeof variant>) => boolean
+    ) => {
+      const availableIndex = variants.findIndex(
+        (candidate) => candidate && predicate(candidate) &&
+          isPurchasableVariant(candidate)
+      );
+      return availableIndex >= 0
+        ? availableIndex
+        : variants.findIndex((candidate) => candidate && predicate(candidate));
+    };
+    const exactIndex = findIndex(exact);
+    const nextIndex = exactIndex >= 0 ? exactIndex : findIndex(fallback);
+    if (nextIndex >= 0) setSelectedVariant(nextIndex);
+  };
 
-  const images =
-    product.images.length > 0 ? product.images : ['/placeholder-image.png'];
+  const productImages = Array.isArray(product.images)
+    ? product.images.filter((image): image is string => Boolean(image))
+    : [];
+  const variantImages = Array.isArray(variant?.images)
+    ? variant.images.filter((image): image is string => Boolean(image))
+    : [];
+  const images = Array.from(new Set([...variantImages, ...productImages]));
+  if (images.length === 0) images.push('/placeholder-image.png');
+  const displayedImageIndex = Math.min(activeImage, images.length - 1);
+  const getImageAlt = (image: string, index: number) => {
+    const productImageIndex = productImages.indexOf(image);
+    if (productImageIndex >= 0 && product.imageAlts?.[productImageIndex]) {
+      return product.imageAlts[productImageIndex];
+    }
+    const colorLabel = variant?.color ? ` ${variant.color}` : '';
+    return `${product.name}${colorLabel} - view ${index + 1}`;
+  };
 
   return (
     <div className="max-w-7xl m-auto px-4 py-8">
@@ -410,8 +511,8 @@ export default function ProductDetail({
         <div className="space-y-4">
           <div className="relative aspect-square w-full max-w-md mx-auto bg-gray-100 rounded-2xl overflow-hidden shadow-lg">
             <Image
-              src={images[activeImage]}
-              alt={product.imageAlts?.[activeImage] || product.name}
+              src={images[displayedImageIndex]}
+              alt={getImageAlt(images[displayedImageIndex], displayedImageIndex)}
               fill
               className="object-contain"
               sizes="(max-width: 1024px) 100vw, 50vw"
@@ -438,7 +539,7 @@ export default function ProductDetail({
                 >
                   <Image
                     src={img}
-                    alt={product.imageAlts?.[idx] || `${product.name} - view ${idx + 1}`}
+                    alt={getImageAlt(img, idx)}
                     fill
                     className="object-cover"
                     loading="eager"
@@ -451,8 +552,8 @@ export default function ProductDetail({
         </div>
 
         {/* Right Column: Product Details */}
-        <div className="space-y-6">
-          <div>
+        <div className="flex flex-col gap-6">
+          <div className="order-1">
             <h1 className="text-3xl md:text-4xl font-bold text-gray-900">
               {product.name}
             </h1>
@@ -463,7 +564,7 @@ export default function ProductDetail({
 
           {/* Rating */}
           {product.averageRating > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="order-2 flex items-center gap-2">
               <div className="flex text-yellow-400">
                 {[...Array(5)].map((_, i) => (
                   <Star
@@ -491,17 +592,119 @@ export default function ProductDetail({
             </div>
           )}
 
+          {variants.length > 0 && (
+            <div className="order-5 space-y-3">
+              {variantColors.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                    <span>Color:</span>
+                    <span className="font-medium capitalize text-gray-900">
+                      {variant?.color || 'Choose a color'}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {variantColors.map(({ color, colorCode }) => {
+                      const choices = variants.filter((candidate) => candidate.color === color);
+                      const inStockChoice = choices.some(
+                        isPurchasableVariant
+                      );
+                      return (
+                        <button
+                          key={color}
+                          type="button"
+                          disabled={!inStockChoice}
+                          title={color}
+                          onClick={() =>
+                            selectVariant(
+                              (candidate) =>
+                                candidate.color === color &&
+                                (!variant?.storage || candidate.storage === variant.storage) &&
+                                (!variant?.ram || candidate.ram === variant.ram),
+                              (candidate) => candidate.color === color
+                            )
+                          }
+                          aria-pressed={variant?.color === color}
+                          className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                            variant?.color === color
+                              ? 'border-blue-600 bg-blue-50 text-blue-800'
+                              : 'border-gray-200 text-gray-700 hover:border-gray-400'
+                          }`}
+                        >
+                          {colorCode && (
+                            <span
+                              className="h-3 w-3 rounded-full border border-black/10"
+                              style={{ backgroundColor: colorCode }}
+                            />
+                          )}
+                          <span className="capitalize">{color}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {variantOptions.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-xs text-gray-600">Storage &amp; RAM</div>
+                  <div className="flex flex-wrap gap-2">
+                    {variantOptions.map(({ candidate, index }) => {
+                      const isAvailable = isPurchasableVariant(candidate);
+                      const isSelected = variant?._id
+                        ? variant._id === candidate._id
+                        : selectedVariant === index;
+                      return (
+                        <button
+                          key={candidate._id || `${candidate.storage}-${candidate.ram}-${index}`}
+                          type="button"
+                          disabled={!isAvailable}
+                          onClick={() => setSelectedVariant(index)}
+                          aria-pressed={isSelected}
+                          className={`rounded-md border px-2.5 py-1.5 text-xs transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                            isSelected
+                              ? 'border-blue-600 bg-blue-50 text-blue-800'
+                              : 'border-gray-200 text-gray-700 hover:border-gray-400'
+                          }`}
+                        >
+                          {[
+                            candidate.storage,
+                            candidate.ram && `${candidate.ram} RAM`,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {hasVariantRows && variants.length === 0 && (
+            <p className="order-5 rounded-xl border border-gray-200 p-4 text-sm text-gray-600">
+              No product combinations are currently available.
+            </p>
+          )}
+
           {/* Pricing / Summary Table */}
-          <div className="rounded-xl border border-gray-200 divide-y divide-gray-100">
+          <div className="order-3 rounded-xl border border-gray-200 divide-y divide-gray-100">
             <div className="flex items-center justify-between px-4 py-3">
               <span className="text-sm font-medium text-gray-600">Price</span>
               <span className="flex items-baseline gap-2">
-                <span className="text-2xl font-extrabold text-green-700">
-                  ৳{finalPrice.toLocaleString()}
-                </span>
-                {hasDiscount && (
+                <motion.span
+                  key={`${selectedVariant}-${finalPrice}`}
+                  initial={{ opacity: 0, y: 3 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.16 }}
+                  className="text-2xl font-extrabold text-green-700"
+                >
+                  {hasVariantRows && variantBasePrice === undefined
+                    ? 'Price unavailable'
+                    : `৳${finalPrice.toLocaleString()}`}
+                </motion.span>
+                {hasDiscount && comparePrice && (
                   <span className="text-sm text-gray-400 line-through">
-                    ৳{product.price.toLocaleString()}
+                    ৳{comparePrice.toLocaleString()}
                   </span>
                 )}
               </span>
@@ -515,12 +718,22 @@ export default function ProductDetail({
                   hasDiscount ? 'text-gray-400 line-through' : 'text-gray-800'
                 }`}
               >
-                ৳{product.price.toLocaleString()}
+                {comparePrice !== undefined
+                  ? `৳${comparePrice.toLocaleString()}`
+                  : hasVariantRows
+                    ? '—'
+                    : `৳${basePrice.toLocaleString()}`}
               </span>
             </div>
             <div className="flex items-center justify-between px-4 py-3">
               <span className="text-sm font-medium text-gray-600">Status</span>
               <span className={`font-semibold ${stockColor}`}>{stockText}</span>
+            </div>
+            <div className="flex items-center justify-between px-4 py-3">
+              <span className="text-sm font-medium text-gray-600">SKU</span>
+              <span className="font-semibold text-gray-800">
+                {hasVariantRows ? variant?.sku || '—' : product.sku || '—'}
+              </span>
             </div>
             <div>
               <div className="flex items-center justify-between px-4 py-3">
@@ -540,7 +753,7 @@ export default function ProductDetail({
 
           {/* Key Features */}
           {keyFeatures.length > 0 && (
-            <div className="rounded-xl border border-gray-200 p-4">
+            <div className="order-4 rounded-xl border border-gray-200 p-4">
               <h3 className="font-semibold text-gray-800">Key Features</h3>
               <ul className="mt-2 space-y-1.5">
                 {keyFeatures.map((f, i) => (
@@ -557,7 +770,7 @@ export default function ProductDetail({
           )}
 
           {/* Payment Options */}
-          <div className="rounded-xl border border-gray-200 p-4">
+          <div className="order-6 rounded-xl border border-gray-200 p-4">
             <h3 className="font-semibold text-gray-800">Payment Options</h3>
             <div className="mt-3 space-y-3 text-sm">
               <div className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-2.5">
@@ -571,7 +784,7 @@ export default function ProductDetail({
           </div>
 
           {/* Quantity + Add to Cart */}
-          <div className="flex items-center gap-4">
+          <div className="order-7 flex items-center gap-4">
             <div
               className="flex items-center rounded-lg border border-gray-300 overflow-hidden"
               aria-label="Quantity"
@@ -600,13 +813,15 @@ export default function ProductDetail({
               <AddToCartButton
                 product={product}
                 quantity={currentQty}
-                disabled={!inStock}
+                variant={variant || undefined}
+                variantRequired={hasVariantRows}
+                disabled={!inStock || (hasVariantRows && !variant)}
               />
             </div>
           </div>
 
           {/* Extra info */}
-          <div className="text-xs text-gray-400 flex gap-4 pt-2">
+          <div className="order-8 text-xs text-gray-400 flex gap-4 pt-2">
             <span>✅ Secure Payment</span>
             <span>🚚 Free Delivery (BD)</span>
             <span>🔄 7 Days Return</span>

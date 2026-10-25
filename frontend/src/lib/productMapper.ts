@@ -27,6 +27,7 @@ export type RawProduct = {
   };
   ratings: any[];
   averageRating: number;
+  variants?: Product['variants'];
   createdAt: string;
   updatedAt: string;
 };
@@ -52,6 +53,7 @@ export function toProductShape(p: RawProduct): Product {
     seo: p.seo || {},
     averageRating: p.averageRating || 0,
     ratings: p.ratings || [],
+    variants: Array.isArray(p.variants) ? p.variants : [],
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
   };

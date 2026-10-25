@@ -6,33 +6,95 @@ import Image from 'next/image';
 import { motion } from 'motion/react';
 import { Heart } from 'lucide-react';
 import { useState, useMemo } from 'react';
-import { Product } from '@/types/product';
+import { Product, ProductVariant } from '@/types/product';
 import { AddToCartButton } from '../cart/AddToCartButton';
 import { cardHover, imageZoom, scaleIn } from '@/lib/animations';
-import { extractProductSpecs } from '@/lib/specFilters';
 import { useWishlist } from '@/store';
 
 interface ProductCardProps {
   product: Product;
+  priorityImage?: boolean;
 }
 
-export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
+export const ProductCard: React.FC<ProductCardProps> = ({
+  product,
+  priorityImage = false,
+}) => {
   const [imageError, setImageError] = useState(false);
   const { wishlist, toggleWishlist } = useWishlist();
   const isWishlisted = wishlist.some((i) => i._id === product._id);
-  const finalPrice =
-    product.discountPrice > 0 ? product.discountPrice : product.price;
+  const hasVariantRows = (product.variants || []).length > 0;
+  const lowestAvailableVariant = (product.variants || [])
+    .filter(
+      (variant) =>
+        variant.enabled !== false &&
+        Number(variant.stock || 0) > 0 &&
+        variant.price !== undefined &&
+        variant.price !== null &&
+        Number(variant.price) > 0 &&
+        !!variant.sku?.trim()
+    )
+    .reduce<ProductVariant | undefined>(
+      (lowest, variant) => {
+        const price = Number(variant.price);
+        const salePrice =
+          Number(variant.discountPrice || 0) > 0 &&
+          Number(variant.discountPrice) < price
+            ? Number(variant.discountPrice)
+            : price;
+        if (!lowest) return variant;
+        const lowestPrice = Number(lowest.price);
+        const lowestSale =
+          Number(lowest.discountPrice || 0) > 0 &&
+          Number(lowest.discountPrice) < lowestPrice
+            ? Number(lowest.discountPrice)
+            : lowestPrice;
+        return salePrice < lowestSale ? variant : lowest;
+      },
+      undefined
+    );
+  const variantRegularPrice = Number(lowestAvailableVariant?.price);
+  const variantDiscountPrice = Number(lowestAvailableVariant?.discountPrice || 0);
+  const finalPrice = hasVariantRows
+    ? lowestAvailableVariant
+      ? variantDiscountPrice > 0 && variantDiscountPrice < variantRegularPrice
+        ? variantDiscountPrice
+        : variantRegularPrice
+      : 0
+    : product.discountPrice > 0 && product.discountPrice < product.price
+      ? product.discountPrice
+      : product.price;
+  const comparePrice = hasVariantRows
+    ? lowestAvailableVariant
+      ? variantRegularPrice
+      : undefined
+    : product.price;
   const hasDiscount =
-    product.discountPrice > 0 && product.discountPrice < product.price;
+    comparePrice !== undefined && finalPrice < comparePrice;
+  const hasAvailableVariant = (product.variants || []).some(
+    (variant) =>
+      variant.enabled !== false &&
+      Number(variant.stock || 0) > 0 &&
+      variant.price !== undefined &&
+      variant.price !== null &&
+      !!variant.sku?.trim()
+  );
+  const outOfStock = hasVariantRows
+    ? !hasAvailableVariant
+    : product.stock <= 0;
   const discountPercent = hasDiscount
     ? Math.round((1 - product.discountPrice / product.price) * 100)
     : 0;
 
-  const keySpecs = useMemo(() => {
-    const map = extractProductSpecs(
-      (product.specifications ?? {}) as Record<string, any>
-    );
-    return Array.from(map.entries()).slice(0, 3);
+  const keyFeatures = useMemo(() => {
+    const specs = (product.specifications ?? {}) as Record<string, any>;
+    if (specs._keyFeatures && typeof specs._keyFeatures === 'object') {
+      return Object.entries(specs._keyFeatures)
+        .filter(([, v]) => typeof v === 'string' || typeof v === 'number')
+        .slice(0, 3)
+        .map(([key, value]) => [key, String(value)] as [string, string]);
+    }
+    return [];
   }, [product.specifications]);
 
   const imageUrl = imageError
@@ -80,7 +142,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
               className="object-cover"
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
               onError={() => setImageError(true)}
-              priority={false}
+              loading={priorityImage ? 'eager' : 'lazy'}
+              fetchPriority={priorityImage ? 'high' : 'auto'}
             />
           </motion.div>
 
@@ -97,7 +160,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           )}
 
           {/* Stock indicator */}
-          {product.stock <= 0 && (
+          {outOfStock && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center backdrop-blur-sm">
               <span className="text-white font-bold text-lg bg-red-600/90 px-4 py-2 rounded-full">
                 Out of Stock
@@ -132,10 +195,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           </h3>
         </Link>
 
-        {/* Key Specifications */}
-        {keySpecs.length > 0 && (
+        {/* Key Features */}
+        {keyFeatures.length > 0 && (
           <div className="mt-2 space-y-0.5">
-            {keySpecs.map(([key, value]) => (
+            {keyFeatures.map(([key, value]) => (
               <p
                 key={key}
                 className="text-xs text-gray-500 line-clamp-1"
@@ -151,11 +214,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
         {/* Price Section */}
         <div className="mt-3 flex items-baseline gap-2">
           <span className="text-xl font-bold text-green-700">
-            ৳{finalPrice.toLocaleString()}
+            {hasVariantRows && !lowestAvailableVariant
+              ? 'Price unavailable'
+              : `${hasVariantRows ? 'From ' : ''}৳${finalPrice.toLocaleString()}`}
           </span>
-          {hasDiscount && (
+          {hasDiscount && comparePrice !== undefined && (
             <span className="text-sm text-gray-400 line-through">
-              ৳{product.price.toLocaleString()}
+              ৳{comparePrice.toLocaleString()}
             </span>
           )}
         </div>
@@ -178,7 +243,16 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
 
         {/* Add to Cart Button */}
         <div className="mt-4">
-          <AddToCartButton product={product} disabled={product.stock <= 0} />
+          {hasVariantRows ? (
+            <Link
+              href={`/product/${product.slug}`}
+              className="flex h-9 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+            >
+              Choose options
+            </Link>
+          ) : (
+            <AddToCartButton product={product} disabled={outOfStock} />
+          )}
         </div>
       </div>
     </motion.div>

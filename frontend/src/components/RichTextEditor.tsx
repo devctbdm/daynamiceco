@@ -273,9 +273,30 @@ export function RichTextEditor({
           ?.characters?.() ?? 0,
       };
     },
-  });
+  }) ?? {
+    block: 'paragraph',
+    textAlign: 'left',
+    fontFamily: '',
+    fontSize: '',
+    color: '',
+    backgroundColor: '',
+    bold: false,
+    italic: false,
+    underline: false,
+    strike: false,
+    code: false,
+    bulletList: false,
+    orderedList: false,
+    taskList: false,
+    blockquote: false,
+    codeBlock: false,
+    link: false,
+    canUndo: false,
+    canRedo: false,
+    characters: 0,
+  };
 
-  if (!editor || !state) {
+  if (!editor) {
     return (
       <div className="min-h-50 rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
         Loading editor…
@@ -743,4 +764,3 @@ export function RichTextEditor({
 }
 
 export default RichTextEditor;
-

@@ -306,7 +306,8 @@ export default function OrdersPage() {
         formatAddress(o.shippingAddress),
         o.items
           .map(
-            (it) => `${it.quantity}x ${it.name} @৳${it.price.toLocaleString()}`
+            (it) =>
+              `${it.quantity}x ${it.name}${it.variantLabel ? ` (${it.variantLabel})` : ''} @৳${it.price.toLocaleString()}`
           )
           .join('; '),
       ]
@@ -341,7 +342,7 @@ export default function OrdersPage() {
       .map(
         (it) => `
           <tr>
-            <td style="padding:8px;border-bottom:1px solid #eee;">${it.name}</td>
+            <td style="padding:8px;border-bottom:1px solid #eee;">${it.name}${it.variantLabel ? ` (${it.variantLabel})` : ''}${it.sku ? ` · SKU: ${it.sku}` : ''}</td>
             <td style="padding:8px;border-bottom:1px solid #eee;text-align:center;">${it.quantity}</td>
             <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">৳${it.price.toLocaleString()}</td>
             <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">৳${(
@@ -844,7 +845,15 @@ export default function OrdersPage() {
                       <TableBody>
                         {viewOrder.items.map((it, idx) => (
                           <TableRow key={idx}>
-                            <TableCell>{it.name}</TableCell>
+                            <TableCell>
+                              {it.name}
+                              {(it.variantLabel || it.sku) && (
+                                <p className="text-xs text-muted-foreground">
+                                  {[it.variantLabel, it.sku && `SKU: ${it.sku}`]
+                                    .filter(Boolean).join(' · ')}
+                                </p>
+                              )}
+                            </TableCell>
                             <TableCell className="text-center">
                               {it.quantity}
                             </TableCell>

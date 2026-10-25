@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { ChevronDown, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Product } from '@/types/product';
+import type { ProductFilterSettings } from '@/lib/api';
 import {
   buildFacetGroups,
   getPriceRange,
@@ -25,6 +26,7 @@ interface ProductFiltersProps {
   products: Product[];
   filters: FilterState;
   onChange: (filters: FilterState) => void;
+  settings?: ProductFilterSettings | null;
 }
 
 function Section({
@@ -118,8 +120,24 @@ export function ProductFilters({
   products,
   filters,
   onChange,
+  settings,
 }: ProductFiltersProps) {
-  const facets = useMemo(() => buildFacetGroups(products), [products]);
+  const selectedBrands = filters.specs['Brand'] ?? [];
+  const brandScopedProducts = useMemo(
+    () =>
+      selectedBrands.length === 1
+        ? products.filter(
+            (product) =>
+              product.brand?.trim().toLocaleLowerCase() ===
+              selectedBrands[0].toLocaleLowerCase()
+          )
+        : products,
+    [products, selectedBrands]
+  );
+  const facets = useMemo(
+    () => buildFacetGroups(brandScopedProducts),
+    [brandScopedProducts]
+  );
   const priceRange = useMemo(() => getPriceRange(products), [products]);
   const [openState, setOpenState] = useState<Record<string, boolean>>({});
 
@@ -143,7 +161,6 @@ export function ProductFilters({
 
   const ratingOptions = [4, 3, 2];
 
-  const selectedBrands = filters.specs['Brand'] ?? [];
   const rating = filters.rating;
 
   const activeCount = useMemo(() => {
@@ -190,8 +207,15 @@ export function ProductFilters({
   };
 
   const availableFacets = facets.filter(
-    (g) => g.key !== 'Brand' || brandValues.length === 0
+    (g) =>
+      (g.key !== 'Brand' || brandValues.length === 0) &&
+      (settings?.facets == null || settings.facets.includes(g.key))
   );
+  const showBrand =
+    brandValues.length > 0 &&
+    (selectedBrands.length > 0 ||
+      settings?.facets == null ||
+      settings.facets.includes('Brand'));
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -223,7 +247,7 @@ export function ProductFilters({
       </div>
 
       {/* Price */}
-      <div className="px-4">
+      {settings?.price !== false && <div className="px-4">
         <Section
           title="Price"
           open={isOpen('price', true)}
@@ -297,10 +321,10 @@ export function ProductFilters({
             ${priceValue[0].toLocaleString()} – ${priceValue[1].toLocaleString()}
           </p>
         </Section>
-      </div>
+      </div>}
 
       {/* Quality / Rating */}
-      <div className="px-4">
+      {settings?.rating !== false && <div className="px-4">
         <Section
           title="Quality"
           open={isOpen('rating', true)}
@@ -325,10 +349,10 @@ export function ProductFilters({
             <p className="text-xs text-gray-400">No ratings available.</p>
           )}
         </Section>
-      </div>
+      </div>}
 
       {/* Availability */}
-      <div className="px-4">
+      {settings?.availability !== false && <div className="px-4">
         <Section
           title="Availability"
           open={isOpen('avail', true)}
@@ -346,10 +370,10 @@ export function ProductFilters({
             onCheckedChange={() => toggleAvailability('out')}
           />
         </Section>
-      </div>
+      </div>}
 
       {/* Brand */}
-      {brandValues.length > 0 && (
+      {showBrand && (
         <div className="px-4">
           <Section
             title="Brand"
@@ -394,7 +418,7 @@ export function ProductFilters({
           </Section>
         ))}
 
-        {availableFacets.length === 0 && brandValues.length === 0 && (
+        {availableFacets.length === 0 && !showBrand && (
           <p className="py-4 text-sm text-gray-400">
             No filters available for this category yet.
           </p>

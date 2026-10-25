@@ -1,4 +1,19 @@
 // src/types/product.types.ts
+export interface ProductVariant {
+  _id?: string;
+  color?: string;
+  colorCode?: string;
+  storage?: string;
+  ram?: string;
+  images?: string[];
+  price?: number;
+  discountPrice?: number;
+  stock?: number;
+  sku?: string;
+  enabled?: boolean;
+  attributes?: Record<string, any>;
+}
+
 export interface Product {
   _id: string;
   name: string;
@@ -9,6 +24,7 @@ export interface Product {
   category: string; // e.g., 'desktops', 'laptops', 'components'
   path?: string[]; // e.g., ['desktops', 'gaming', 'intel']
   productCode?: string;
+  sku?: string;
   brand?: string;
   images: string[];
   imageAlts?: string[];
@@ -16,6 +32,7 @@ export interface Product {
   featured: boolean;
   specifications?: Record<string, any>;
   content?: string | any[];
+  variants?: ProductVariant[];
   seo?: {
     metaTitle?: string;
     metaDescription?: string;

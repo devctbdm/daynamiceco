@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { getDatabase } from "../db/database.js";
 import { productEntries } from "../models/Product.js";
@@ -45,6 +46,93 @@ export async function findProductSummariesByIds(ids, database = getDatabase()) {
     .from(productEntries)
     .where(inArray(productEntries.id, productIds));
   return rows.map((row) => ({ ...row, _id: row.id }));
+}
+
+export function resolveProductPurchase(product, variantId = "") {
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  let variant = null;
+
+  if (variants.length > 0) {
+    if (!variantId) {
+      throw new BadRequestException({
+        success: false,
+        message: `Please select a combination for ${product.name}`,
+      });
+    }
+    variant = variants.find(
+      (entry) => entry?._id === variantId && entry.enabled !== false,
+    );
+    if (!variant) {
+      throw new BadRequestException({
+        success: false,
+        message: `The selected combination for ${product.name} is unavailable`,
+      });
+    }
+  } else if (variantId) {
+    throw new BadRequestException({
+      success: false,
+      message: `The selected combination for ${product.name} is unavailable`,
+    });
+  }
+
+  const basePrice = variant ? Number(variant.price) : Number(product.price);
+  const discountPrice = Number(
+    variant ? variant.discountPrice || 0 : product.discountPrice || 0,
+  );
+  if (!Number.isFinite(basePrice) || basePrice < 0) {
+    throw new BadRequestException({
+      success: false,
+      message: "The selected product combination has no valid price",
+    });
+  }
+  if (variant && !String(variant.sku || "").trim()) {
+    throw new BadRequestException({
+      success: false,
+      message: `The selected combination for ${product.name} has no SKU`,
+    });
+  }
+
+  const stock = Number(variant ? variant.stock ?? 0 : product.stock ?? 0);
+  if (
+    !Number.isFinite(stock) ||
+    stock < 0 ||
+    (variant && !Number.isSafeInteger(stock))
+  ) {
+    throw new BadRequestException({
+      success: false,
+      message: "The selected product combination has invalid stock",
+    });
+  }
+  const price =
+    discountPrice > 0 && discountPrice < basePrice
+      ? discountPrice
+      : basePrice;
+  const variantLabel = variant
+    ? [variant.color, variant.storage, variant.ram].filter(Boolean).join(" / ")
+    : "";
+
+  return {
+    variant,
+    variantId: variant ? String(variant._id) : "",
+    variantLabel,
+    sku: variant?.sku || product.sku || "",
+    price,
+    promoDiscount: basePrice - price,
+    stock,
+    image:
+      (variant?.images?.length ? variant.images[0] : null) ||
+      product.images?.[0] ||
+      "",
+  };
+}
+
+export function assertProductPurchaseStock(purchase, quantity, productName) {
+  if (purchase.stock < quantity) {
+    throw new BadRequestException({
+      success: false,
+      message: `Insufficient stock for ${productName}${purchase.variantLabel ? ` (${purchase.variantLabel})` : ""}`,
+    });
+  }
 }
 
 export async function countActiveProducts(database = getDatabase()) {
@@ -136,6 +224,60 @@ export async function changeProductStock(
   return Boolean(updated);
 }
 
+export async function changeProductVariantStock(
+  id,
+  variantId,
+  amount,
+  { requireAvailable = false } = {},
+  database = getDatabase(),
+) {
+  if (
+    !isProductId(id) ||
+    typeof variantId !== "string" ||
+    !variantId ||
+    !Number.isSafeInteger(amount) ||
+    amount === 0
+  ) {
+    return false;
+  }
+
+  return database.transaction(async (transaction) => {
+    const [product] = await transaction
+      .select({
+        id: productEntries.id,
+        variants: productEntries.variants,
+      })
+      .from(productEntries)
+      .where(eq(productEntries.id, String(id)))
+      .for("update")
+      .limit(1);
+    if (!product || !Array.isArray(product.variants)) return false;
+
+    const index = product.variants.findIndex(
+      (variant) => variant?._id === variantId,
+    );
+    if (index < 0) return false;
+
+    const variants = [...product.variants];
+    const current = variants[index];
+    const stock = Number(current.stock ?? 0);
+    if (
+      !Number.isSafeInteger(stock) ||
+      stock + amount < 0 ||
+      (requireAvailable && current.enabled === false)
+    ) {
+      return false;
+    }
+    variants[index] = { ...current, stock: stock + amount };
+
+    await transaction
+      .update(productEntries)
+      .set({ variants, updatedAt: new Date() })
+      .where(eq(productEntries.id, String(id)));
+    return true;
+  });
+}
+
 export async function populateProductRatings(product) {
   return (await populateProductsRatings([product]))[0];
 }
@@ -178,6 +320,7 @@ export function serializeProduct(row) {
     content: row.content ?? "",
     seo: row.seo ?? {},
     ratings: Array.isArray(row.ratings) ? row.ratings : [],
+    variants: Array.isArray(row.variants) ? row.variants : [],
   };
 }
 

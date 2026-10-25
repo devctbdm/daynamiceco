@@ -557,10 +557,10 @@ function CategoryDonutCard({
 // --- Main Page Component ---
 
 export default function AdminDashboardPage() {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !dashboardStatsResource.peek());
   const [error, setError] = useState<string | null>(null);
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(() => dashboardStatsResource.peek() ?? null);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(() => (dashboardStatsResource.peek() ? Date.now() : null));
   const [storeName, setStoreName] = useState<string | null>(null);
 
   const [open, setOpen] = useState(false);
@@ -569,6 +569,7 @@ export default function AdminDashboardPage() {
 
   const fetchStats = useCallback(async ({ force = false } = {}) => {
     setError(null);
+    if (!force && !stats) setLoading(true);
     try {
       // Shared resource: one request even when effects double-fire
       // (StrictMode) or the page remounts inside the TTL window.
@@ -582,11 +583,15 @@ export default function AdminDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [stats]);
 
   useEffect(() => {
+    if (stats) {
+      setLoading(false);
+      return;
+    }
     fetchStats();
-  }, [fetchStats]);
+  }, [fetchStats, stats]);
 
   // Store name for the greeting — cached resource, usually resolved already.
   useEffect(() => {

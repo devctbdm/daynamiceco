@@ -15,6 +15,7 @@ import { physicalStoreEntries } from "../models/PhysicalStore.js";
 import { physicalStoreBannerSettings } from "../models/PhysicalStoreSetting.js";
 import { popupOfferSettings } from "../models/PopupOffer.js";
 import { productEntries } from "../models/Product.js";
+import { productFilterSettings } from "../models/ProductFilterSettings.js";
 import { promoCodeEntries } from "../models/PromoCode.js";
 import { questionEntries } from "../models/Question.js";
 import { savedBuildEntries } from "../models/SavedBuild.js";
@@ -44,6 +45,7 @@ export {
   physicalStoreEntries,
   popupOfferSettings,
   productEntries,
+  productFilterSettings,
   promoCodeEntries,
   questionEntries,
   savedBuildEntries,

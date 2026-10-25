@@ -24,6 +24,7 @@ import PermissionGroupsModule from "./permission-groups/permission-groups.module
 import PhysicalStoresModule from "./physical-stores/physical-stores.module.js";
 import PopupOffersModule from "./popup-offers/popup-offers.module.js";
 import ProductsModule from "./products/products.module.js";
+import ProductFiltersModule from "./product-filters/product-filters.module.js";
 import PromosModule from "./promos/promos.module.js";
 import QuestionsModule from "./questions/questions.module.js";
 import UsersModule from "./users/users.module.js";
@@ -92,6 +93,7 @@ Module({
     PhysicalStoresModule,
     PopupOffersModule,
     ProductsModule,
+    ProductFiltersModule,
     PromosModule,
     QuestionsModule,
     UsersModule,

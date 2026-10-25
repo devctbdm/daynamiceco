@@ -8,6 +8,10 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { DATABASE } from "../db/database.js";
 import { productEntries } from "../models/Product.js";
+import {
+  assertProductPurchaseStock,
+  resolveProductPurchase,
+} from "../products/products.repository.js";
 import { shoppingCartItems, shoppingCarts } from "../models/Cart.js";
 
 class CartService {
@@ -30,14 +34,8 @@ class CartService {
   }
 
   async addItem(userId, input) {
-    const {
-      productId,
-      quantity,
-      name,
-      price,
-      image,
-      promoDiscount = 0,
-    } = input ?? {};
+    const { productId, quantity } = input ?? {};
+    const variantId = typeof input?.variantId === "string" ? input.variantId : "";
 
     if (!productId || !quantity) {
       throw new BadRequestException({
@@ -46,14 +44,6 @@ class CartService {
       });
     }
     assertQuantity(quantity);
-    assertNonnegativeNumber(price, "Price");
-    assertNonnegativeNumber(promoDiscount, "Promo discount");
-    if (typeof name !== "string" || typeof image !== "string") {
-      throw new BadRequestException({
-        success: false,
-        message: "Product name and image are required",
-      });
-    }
 
     const cart = await this.database.transaction(async (transaction) => {
       await transaction
@@ -67,6 +57,21 @@ class CartService {
         .where(eq(shoppingCarts.userId, userId))
         .for("update");
 
+      const [product] = await transaction
+        .select()
+        .from(productEntries)
+        .where(eq(productEntries.id, String(productId)))
+        .for("update")
+        .limit(1);
+      if (!product) {
+        throw new NotFoundException({
+          success: false,
+          message: "Product not found",
+        });
+      }
+      const purchase = resolveProductPurchase(product, variantId);
+      const { price, promoDiscount, variantLabel, image } = purchase;
+
       const [existingItem] = await transaction
         .select()
         .from(shoppingCartItems)
@@ -74,16 +79,27 @@ class CartService {
           and(
             eq(shoppingCartItems.cartId, currentCart.id),
             eq(shoppingCartItems.productId, String(productId)),
+            eq(shoppingCartItems.variantId, variantId),
           ),
         )
         .limit(1);
+
+      assertProductPurchaseStock(
+        purchase,
+        (existingItem?.quantity ?? 0) + quantity,
+        product.name,
+      );
 
       if (existingItem) {
         await transaction
           .update(shoppingCartItems)
           .set({
             quantity: existingItem.quantity + quantity,
+            name: product.name,
+            price,
             promoDiscount,
+            image,
+            variantLabel,
             updatedAt: new Date(),
           })
           .where(eq(shoppingCartItems.id, existingItem.id));
@@ -92,7 +108,9 @@ class CartService {
           id: randomUUID(),
           cartId: currentCart.id,
           productId: String(productId),
-          name,
+          variantId,
+          variantLabel,
+          name: product.name,
           price,
           quantity,
           image,
@@ -106,7 +124,11 @@ class CartService {
     return this.serializeCart(cart);
   }
 
-  async updateItem(userId, productId, quantity) {
+  async updateItem(userId, productId, variantId, quantity) {
+    if (arguments.length === 3) {
+      quantity = variantId;
+      variantId = "";
+    }
     if (!productId) {
       throw new BadRequestException({
         success: false,
@@ -131,6 +153,7 @@ class CartService {
           and(
             eq(shoppingCartItems.cartId, currentCart.id),
             eq(shoppingCartItems.productId, String(productId)),
+            eq(shoppingCartItems.variantId, variantId || ""),
           ),
         )
         .limit(1);
@@ -139,6 +162,24 @@ class CartService {
         throw new NotFoundException({
           success: false,
           message: "Item not found in cart",
+        });
+      }
+
+      const [product] = await transaction
+        .select()
+        .from(productEntries)
+        .where(eq(productEntries.id, String(productId)))
+        .limit(1);
+      const variant = product?.variants?.find(
+        (entry) => entry?._id === item.variantId && entry.enabled !== false,
+      );
+      const stock = item.variantId
+        ? Number(variant?.stock ?? 0)
+        : Number(product?.stock ?? 0);
+      if (!product || (item.variantId && !variant) || quantity > stock) {
+        throw new BadRequestException({
+          success: false,
+          message: "The requested quantity is no longer available",
         });
       }
 
@@ -153,7 +194,7 @@ class CartService {
     return this.serializeCart(cart);
   }
 
-  async removeItem(userId, productId) {
+  async removeItem(userId, productId, variantId = "") {
     const cart = await this.database.transaction(async (transaction) => {
       const currentCart = await this.getLockedCart(transaction, userId);
       if (!currentCart) {
@@ -169,6 +210,7 @@ class CartService {
           and(
             eq(shoppingCartItems.cartId, currentCart.id),
             eq(shoppingCartItems.productId, String(productId)),
+            eq(shoppingCartItems.variantId, variantId || ""),
           ),
         );
 
@@ -251,10 +293,25 @@ class CartService {
           item.productId,
         ),
         name: item.name,
+        variantId: item.variantId || "",
+        variantLabel: item.variantLabel || "",
+        sku:
+          productById
+            .get(item.productId)
+            ?.variants?.find((variant) => variant?._id === item.variantId)
+            ?.sku || "",
         price: item.price,
         promoDiscount: item.promoDiscount,
         quantity: item.quantity,
         image: item.image,
+        stock: item.variantId
+          ? Number(
+              productById
+                .get(item.productId)
+                ?.variants?.find((variant) => variant?._id === item.variantId)
+                ?.stock ?? 0,
+            )
+          : Number(productById.get(item.productId)?.stock ?? 0),
       })),
       totalItems: cart.totalItems,
       totalPrice: cart.totalPrice,
@@ -287,15 +344,6 @@ function assertQuantity(quantity) {
     throw new BadRequestException({
       success: false,
       message: "Quantity must be at least 1",
-    });
-  }
-}
-
-function assertNonnegativeNumber(value, label) {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    throw new BadRequestException({
-      success: false,
-      message: `${label} must be a nonnegative number`,
     });
   }
 }

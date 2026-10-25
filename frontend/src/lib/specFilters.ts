@@ -48,9 +48,17 @@ const FIELD_DEFS: Record<string, { label: string; aliases: string[] }> = {
     label: 'Storage',
     aliases: ['storage', 'ssd', 'hdd', 'storage capacity', 'storage type'],
   },
+  'Internal Storage': {
+    label: 'Internal Storage',
+    aliases: ['internal storage', 'internal storage capacity'],
+  },
   Motherboard: {
     label: 'Motherboard',
-    aliases: ['motherboard', 'chipset', 'motherboard model'],
+    aliases: ['motherboard', 'motherboard model'],
+  },
+  Chipset: {
+    label: 'Chipset',
+    aliases: ['chipset', 'system chipset'],
   },
   'Screen Size': {
     label: 'Screen Size',
@@ -63,6 +71,10 @@ const FIELD_DEFS: Record<string, { label: string; aliases: string[] }> = {
   'Panel Type': {
     label: 'Panel Type',
     aliases: ['panel type', 'panel'],
+  },
+  'Display Type': {
+    label: 'Display Type',
+    aliases: ['display type', 'screen type'],
   },
   'Refresh Rate': {
     label: 'Refresh Rate',
@@ -79,6 +91,19 @@ const FIELD_DEFS: Record<string, { label: string; aliases: string[] }> = {
       'input ports',
     ],
   },
+  'Response Time': {
+    label: 'Response Time',
+    aliases: ['response time', 'response time ms'],
+  },
+  Battery: {
+    label: 'Battery',
+    aliases: ['battery', 'battery capacity', 'battery life'],
+  },
+  'SIM Support': {
+    label: 'SIM Support',
+    aliases: ['sim support', 'sim type', 'sim'],
+  },
+  Series: { label: 'Series', aliases: ['series', 'product series'] },
   'Wi-Fi Standard': {
     label: 'Wi-Fi Standard',
     aliases: [
@@ -145,11 +170,18 @@ const FIELD_ORDER = [
   'RAM',
   'Graphics Card',
   'Storage',
+  'Internal Storage',
+  'Chipset',
   'Motherboard',
   'Screen Size',
+  'Display Type',
   'Resolution',
   'Panel Type',
   'Refresh Rate',
+  'Response Time',
+  'Battery',
+  'SIM Support',
+  'Series',
   'Input Type',
   'Wi-Fi Standard',
   'WiFi Speed',
@@ -175,14 +207,15 @@ function canonicalize(key: string): { key: string; label: string } {
   return { key: label, label };
 }
 
+export function normalizeFacetKey(key: string): string {
+  return canonicalize(key).key;
+}
+
 export function extractProductSpecs(
   specs: Record<string, any>
 ): Map<string, string> {
   const result = new Map<string, string>();
   const sources: Record<string, any>[] = [];
-  if (specs?._keySpecs && typeof specs._keySpecs === 'object') {
-    sources.push(specs._keySpecs);
-  }
   if (specs?._specGroups && typeof specs._specGroups === 'object') {
     for (const group of Object.values(specs._specGroups)) {
       if (group && typeof group === 'object') sources.push(group);
@@ -283,7 +316,8 @@ export function applyFilters(
     );
     for (const [key, selected] of Object.entries(filters.specs)) {
       if (selected.length === 0) continue;
-      const value = specs.get(key);
+      const value =
+        key === 'Brand' ? p.brand?.trim() || specs.get(key) : specs.get(key);
       if (!value) return false;
       if (!selected.some((s) => s.toLowerCase() === value.toLowerCase()))
         return false;

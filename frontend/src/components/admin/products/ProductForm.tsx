@@ -40,8 +40,21 @@ export type Status = 'active' | 'draft' | 'out_of_stock';
 
 export type SpecField = { id: string; label: string; value: string };
 export type SpecGroup = { id: string; name: string; fields: SpecField[] };
-export type KeySpec = { id: string; label: string; value: string };
 export type KeyFeature = { id: string; label: string; value: string };
+export type ProductVariant = {
+  id: string;
+  color: string;
+  colorCode: string;
+  storage: string;
+  ram: string;
+  images: string[];
+  price: string;
+  discountPrice: string;
+  stock: string;
+  sku: string;
+  enabled: boolean;
+  _files?: File[];
+};
 
 export type ContentBlock =
   | { id: string; type: 'title'; text: string }
@@ -69,11 +82,11 @@ export type ProductFormValue = {
   holiday: boolean;
   description: string;
   images: string[];
-  keySpecs: KeySpec[];
   keyFeatures: KeyFeature[];
   specs: SpecGroup[];
   content: string;
   pcPart: PcPartFormValue;
+  variants: ProductVariant[];
 };
 
 export const EMPTY_FORM_VALUE: ProductFormValue = {
@@ -96,12 +109,112 @@ export const EMPTY_FORM_VALUE: ProductFormValue = {
   holiday: false,
   description: '',
   images: [],
-  keySpecs: [],
   keyFeatures: [],
   specs: [],
   content: '',
   pcPart: { ...EMPTY_PC_PART },
+  variants: [],
 };
+
+export function validateVariantCombinations(
+  variants: ProductVariant[]
+): string | null {
+  const combinationKeys = new Set<string>();
+  const skus = new Set<string>();
+
+  for (const variant of variants) {
+    if (variant.enabled === false) continue;
+    if (![variant.color, variant.storage, variant.ram].some((value) => value.trim())) {
+      continue;
+    }
+
+    const key = [variant.color, variant.storage, variant.ram]
+      .map((value) => value.trim().toLowerCase())
+      .join('|');
+    if (combinationKeys.has(key)) {
+      return 'Each color, storage, and RAM combination must be unique.';
+    }
+    combinationKeys.add(key);
+
+    const price = Number(variant.price);
+    if (variant.price.trim() === '' || !Number.isFinite(price) || price <= 0) {
+      return `Enter a regular price for ${variant.color || variant.storage || variant.ram}.`;
+    }
+    const discountPrice =
+      variant.discountPrice.trim() === '' ? 0 : Number(variant.discountPrice);
+    if (!Number.isFinite(discountPrice) || discountPrice < 0) {
+      return `Enter a valid discount price for ${variant.color || variant.storage || variant.ram}.`;
+    }
+    if (discountPrice > 0 && discountPrice >= price) {
+      return `The discount price must be less than the regular price for ${variant.color || variant.storage || variant.ram}.`;
+    }
+    if (variant.stock.trim() === '' || !Number.isSafeInteger(Number(variant.stock)) || Number(variant.stock) < 0) {
+      return `Enter a whole-number stock quantity for ${variant.color || variant.storage || variant.ram}.`;
+    }
+    if (!variant.sku.trim()) {
+      return `Enter a SKU for ${variant.color || variant.storage || variant.ram}.`;
+    }
+
+    const sku = variant.sku.trim().toLowerCase();
+    if (skus.has(sku)) return 'Each variant combination must have a unique SKU.';
+    skus.add(sku);
+  }
+
+  return null;
+}
+
+export function serializeProductVariants(variants: ProductVariant[]) {
+  const tierPrices = new Map<
+    string,
+    { price: string; discountPrice: string }
+  >();
+  const tiers = new Map<string, ProductVariant[]>();
+  for (const variant of variants) {
+    const key = variantTierKey(variant);
+    tiers.set(key, [...(tiers.get(key) || []), variant]);
+  }
+  for (const [key, tierVariants] of tiers) {
+    const pricedVariant =
+      tierVariants.find((variant) => variant.price.trim() !== '') ||
+      tierVariants[0];
+    tierPrices.set(key, {
+      price: pricedVariant.price,
+      discountPrice: pricedVariant.discountPrice,
+    });
+  }
+
+  return variants.map((variant) => ({
+    _id: variant.id,
+    color: variant.color,
+    colorCode: variant.colorCode,
+    storage: variant.storage,
+    ram: variant.ram,
+    images: variant.images.filter(
+      (image) => typeof image === 'string' && !image.startsWith('blob:')
+    ),
+    price:
+      tierPrices.get(variantTierKey(variant))?.price === ''
+        ? undefined
+        : Number(tierPrices.get(variantTierKey(variant))?.price),
+    discountPrice:
+      tierPrices.get(variantTierKey(variant))?.discountPrice === ''
+        ? 0
+        : Number(tierPrices.get(variantTierKey(variant))?.discountPrice),
+    stock: variant.stock === '' ? 0 : Number(variant.stock),
+    sku: variant.sku || undefined,
+    enabled: variant.enabled,
+  }));
+}
+
+function variantTierKey(variant: Pick<ProductVariant, 'storage' | 'ram'>) {
+  return [variant.storage, variant.ram]
+    .map((value) => value.trim().toLowerCase())
+    .join('|');
+}
+
+function variantColorKey(variant: Pick<ProductVariant, 'color'>) {
+  return variant.color.trim().toLowerCase();
+}
 
 // Convert legacy block-array content (old ContentEditor) into rich-text HTML so
 // it can be opened in the TipTap editor. HTML strings pass through untouched.
@@ -163,7 +276,6 @@ export function buildSkuBase(name: string, category?: string) {
 }
 
 export function parseSpecifications(raw: any): {
-  keySpecs: KeySpec[];
   keyFeatures: KeyFeature[];
   specGroups: SpecGroup[];
 } {
@@ -178,13 +290,8 @@ export function parseSpecifications(raw: any): {
         })()
       : raw || {};
 
-  if (data._keySpecs || data._keyFeatures || data._specGroups) {
+  if (data._keyFeatures || data._specGroups) {
     return {
-      keySpecs: Object.entries(data._keySpecs || {}).map(([k, v]) => ({
-        id: uid(),
-        label: k,
-        value: String(v),
-      })),
       keyFeatures: Object.entries(data._keyFeatures || {}).map(([k, v]) => ({
         id: uid(),
         label: k,
@@ -219,7 +326,6 @@ export function parseSpecifications(raw: any): {
     }
   }
   return {
-    keySpecs: [],
     keyFeatures: legacyKeyFeatures,
     specGroups: legacySpecGroups,
   };
@@ -570,9 +676,9 @@ export function ProductForm({
         </div>
       </div>
 
-      <KeySpecsEditor
-        value={value.keySpecs}
-        onChange={(keySpecs) => onChange({ keySpecs })}
+      <ColorVariantsEditor
+        value={value.variants || []}
+        onChange={(variants) => onChange({ variants })}
       />
 
       <KeyFeaturesEditor
@@ -697,73 +803,467 @@ function ProfitSummary({
   );
 }
 
-function KeySpecsEditor({
+
+
+function ColorVariantsEditor({
   value,
   onChange,
 }: {
-  value: KeySpec[];
-  onChange: (v: KeySpec[]) => void;
+  value: ProductVariant[];
+  onChange: (v: ProductVariant[]) => void;
 }) {
-  function addSpec() {
-    onChange([...value, { id: uid(), label: '', value: '' }]);
+  const [newColor, setNewColor] = useState('');
+  const [newColorCode, setNewColorCode] = useState('#000000');
+  const [newStorage, setNewStorage] = useState('');
+  const [newRam, setNewRam] = useState('');
+  const [newPrice, setNewPrice] = useState('');
+  const [newDiscountPrice, setNewDiscountPrice] = useState('');
+
+  const colors = Array.from(
+    new Map(
+      value
+        .filter((variant) => variant.color.trim())
+        .map((variant) => [variantColorKey(variant), variant])
+    ).values()
+  );
+  const tiers = Array.from(
+    new Map(
+      value
+        .filter((variant) => variant.storage.trim() || variant.ram.trim())
+        .map((variant) => [variantTierKey(variant), variant])
+    ).values()
+  );
+
+  function updateVariant(id: string, patch: Partial<ProductVariant>) {
+    const target = value.find((variant) => variant.id === id);
+    if (!target) return;
+    if (patch.price !== undefined || patch.discountPrice !== undefined) {
+      const key = variantTierKey(target);
+      onChange(
+        value.map((variant) =>
+          variantTierKey(variant) === key
+            ? { ...variant, ...patch }
+            : variant
+        )
+      );
+      return;
+    }
+    onChange(value.map((variant) => (variant.id === id ? { ...variant, ...patch } : variant)));
   }
-  function updateSpec(id: string, patch: Partial<KeySpec>) {
-    onChange(value.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+
+  function updateColor(color: string, patch: Partial<ProductVariant>) {
+    const key = color.trim().toLowerCase();
+    onChange(
+      value.map((variant) =>
+        variantColorKey(variant) === key ? { ...variant, ...patch } : variant
+      )
+    );
   }
-  function removeSpec(id: string) {
-    onChange(value.filter((s) => s.id !== id));
+
+  function updateTier(
+    tier: ProductVariant,
+    patch: Partial<ProductVariant>
+  ) {
+    const key = variantTierKey(tier);
+    onChange(
+      value.map((variant) =>
+        variantTierKey(variant) === key ? { ...variant, ...patch } : variant
+      )
+    );
+  }
+
+  function updateColorImages(color: string, files: File[]) {
+    const key = color.trim().toLowerCase();
+    let fileOwnerAssigned = false;
+    const previewImages = files.map((file) => URL.createObjectURL(file));
+    onChange(
+      value.map((variant) => {
+        if (variantColorKey(variant) !== key) return variant;
+        const ownsFiles = !fileOwnerAssigned;
+        fileOwnerAssigned = true;
+        return {
+          ...variant,
+          images: previewImages,
+          _files: ownsFiles ? files : undefined,
+        };
+      })
+    );
+  }
+
+  function addColor() {
+    const color = newColor.trim();
+    if (!color) {
+      toast.error('Enter a color name first.');
+      return;
+    }
+    if (colors.some((variant) => variantColorKey(variant) === color.toLowerCase())) {
+      toast.error('That color already exists.');
+      return;
+    }
+    if (colors.length === 0 && value.length > 0) {
+      onChange(
+        value.map((variant) => ({
+          ...variant,
+          color,
+          colorCode: newColorCode,
+        }))
+      );
+    } else {
+      const rows = tiers.length
+        ? tiers.map((tier) => ({
+            id: uid(),
+            color,
+            colorCode: newColorCode,
+            storage: tier.storage,
+            ram: tier.ram,
+            images: [],
+            price: tier.price,
+            discountPrice: tier.discountPrice,
+            stock: '',
+            sku: '',
+            enabled: true,
+          }))
+        : [
+            {
+              id: uid(),
+              color,
+              colorCode: newColorCode,
+              storage: '',
+              ram: '',
+              images: [],
+              price: '',
+              discountPrice: '',
+              stock: '',
+              sku: '',
+              enabled: true,
+            },
+          ];
+      onChange([...value, ...rows]);
+    }
+    setNewColor('');
+  }
+
+  function addStorageTier() {
+    const storage = newStorage.trim();
+    const ram = newRam.trim();
+    if (!storage && !ram) {
+      toast.error('Enter a storage size or RAM option first.');
+      return;
+    }
+    const tierKey = variantTierKey({ storage, ram });
+    if (tiers.some((tier) => variantTierKey(tier) === tierKey)) {
+      toast.error('That storage/RAM option already exists.');
+      return;
+    }
+
+    if (tiers.length === 0 && value.length > 0) {
+      onChange(
+        value.map((variant) => ({
+          ...variant,
+          storage,
+          ram,
+          price: newPrice,
+          discountPrice: newDiscountPrice,
+        }))
+      );
+    } else {
+      const colorRows = colors.length ? colors : [null];
+      const rows = colorRows.map((color) => ({
+        id: uid(),
+        color: color?.color || '',
+        colorCode: color?.colorCode || '#000000',
+        storage,
+        ram,
+        images: color?.images || [],
+        price: newPrice,
+        discountPrice: newDiscountPrice,
+        stock: '',
+        sku: '',
+        enabled: true,
+      }));
+      onChange([...value, ...rows]);
+    }
+    setNewStorage('');
+    setNewRam('');
+    setNewPrice('');
+    setNewDiscountPrice('');
+  }
+
+  function removeColor(color: string) {
+    const key = color.trim().toLowerCase();
+    if (colors.length === 1) {
+      onChange(
+        value.map((variant) => ({
+          ...variant,
+          color: '',
+          colorCode: '',
+          images: [],
+          _files: undefined,
+        }))
+      );
+      return;
+    }
+    onChange(value.filter((variant) => variantColorKey(variant) !== key));
+  }
+
+  function removeTier(tier: ProductVariant) {
+    const key = variantTierKey(tier);
+    onChange(value.filter((variant) => variantTierKey(variant) !== key));
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="font-medium">Key Specifications</h3>
+          <Label className="text-sm font-semibold">Product options</Label>
           <p className="text-xs text-muted-foreground">
-            These specs will be highlighted on the product card
+            Set color images once, price by storage/RAM, then enter stock and SKU for every combination.
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={addSpec}>
-          <Plus className="h-4 w-4 mr-1" /> Add spec
-        </Button>
-      </div>
-
-      <div className="space-y-2">
-        {value.map((spec) => (
-          <div key={spec.id} className="flex gap-2 items-start">
-            <div className="flex-1 space-y-1.5">
-              <Input
-                placeholder="Label (e.g., Resolution)"
-                value={spec.label}
-                onChange={(e) =>
-                  updateSpec(spec.id, { label: e.target.value })
-                }
-              />
-              <Input
-                placeholder="Value (e.g., FHD 1920x1080)"
-                value={spec.value}
-                onChange={(e) =>
-                  updateSpec(spec.id, { value: e.target.value })
-                }
-              />
-            </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => removeSpec(spec.id)}
-              className="mt-6"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        ))}
       </div>
 
       {value.length === 0 && (
-        <div className="text-center py-8 text-muted-foreground text-sm">
-          No key specifications added yet
+        <div className="text-center py-8 text-muted-foreground text-sm border border-dashed rounded-md">
+          Add colors and storage/RAM options to create product combinations.
         </div>
       )}
+
+      <section className="space-y-3 rounded-md border p-3">
+        <div>
+          <Label className="font-medium">Colors and images</Label>
+          <p className="text-xs text-muted-foreground">
+            Images are shared across every storage/RAM option of the same color.
+          </p>
+        </div>
+        {colors.map((colorVariant) => {
+          const colorRows = value.filter(
+            (variant) => variantColorKey(variant) === variantColorKey(colorVariant)
+          );
+          const colorImages = colorRows.find((variant) => variant.images.length)?.images || [];
+          return (
+            <div key={variantColorKey(colorVariant)} className="space-y-2 rounded border p-3">
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={colorVariant.colorCode || '#000000'}
+                  onChange={(event) =>
+                    updateColor(colorVariant.color, { colorCode: event.target.value })
+                  }
+                  className="h-7 w-10 rounded border"
+                />
+                <Input
+                  value={colorVariant.color}
+                  onChange={(event) =>
+                    updateColor(colorVariant.color, { color: event.target.value })
+                  }
+                  aria-label="Color name"
+                  className="h-8 max-w-xs"
+                />
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="text-destructive"
+                  onClick={() => removeColor(colorVariant.color)}
+                  aria-label={`Remove ${colorVariant.color} color`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Color images</Label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(event) => {
+                    const files = Array.from(event.target.files || []);
+                    if (files.length === 0) return;
+                    updateColorImages(
+                      colorVariant.color,
+                      files
+                    );
+                    event.target.value = '';
+                  }}
+                  className="block w-full text-xs text-muted-foreground file:mr-3 file:rounded file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground"
+                />
+                {colorImages.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {colorImages.map((image, index) => (
+                      <img
+                        key={`${image}-${index}`}
+                        src={image}
+                        alt={`${colorVariant.color} view ${index + 1}`}
+                        className="h-14 w-14 rounded border object-cover"
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="color"
+            value={newColorCode}
+            onChange={(event) => setNewColorCode(event.target.value)}
+            aria-label="New color swatch"
+            className="h-8 w-10 rounded border"
+          />
+          <Input
+            value={newColor}
+            onChange={(event) => setNewColor(event.target.value)}
+            placeholder="Add color (e.g., Black)"
+            className="h-8 max-w-xs"
+          />
+          <Button type="button" size="sm" variant="outline" onClick={addColor}>
+            <Plus className="mr-1 h-4 w-4" /> Add color
+          </Button>
+        </div>
+      </section>
+
+      <section className="space-y-3 rounded-md border p-3">
+        <div>
+          <Label className="font-medium">Storage/RAM prices</Label>
+          <p className="text-xs text-muted-foreground">
+            Each tier has one price shared by every color.
+          </p>
+        </div>
+        {tiers.map((tier) => (
+          <div
+            key={variantTierKey(tier)}
+            className="grid grid-cols-1 gap-2 rounded border p-3 sm:grid-cols-2 lg:grid-cols-5"
+          >
+            <Input
+              value={tier.storage}
+              onChange={(event) =>
+                updateTier(tier, { storage: event.target.value })
+              }
+              placeholder="Storage (e.g., 256 GB)"
+              aria-label="Storage option"
+            />
+            <Input
+              value={tier.ram}
+              onChange={(event) =>
+                updateTier(tier, { ram: event.target.value })
+              }
+              placeholder="RAM (optional)"
+              aria-label="RAM option"
+            />
+            <Input
+              type="number"
+              value={tier.price}
+              onChange={(event) =>
+                updateVariant(tier.id, { price: event.target.value })
+              }
+              placeholder="Regular price"
+              aria-label={`Regular price for ${tier.storage} ${tier.ram}`}
+            />
+            <Input
+              type="number"
+              value={tier.discountPrice}
+              onChange={(event) =>
+                updateVariant(tier.id, { discountPrice: event.target.value })
+              }
+              placeholder="Discount price (optional)"
+              aria-label={`Discount price for ${tier.storage} ${tier.ram}`}
+            />
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="text-destructive"
+              onClick={() => removeTier(tier)}
+              aria-label={`Remove ${tier.storage} ${tier.ram} option`}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <Input
+            value={newStorage}
+            onChange={(event) => setNewStorage(event.target.value)}
+            placeholder="New storage (e.g., 256 GB)"
+            aria-label="New storage option"
+          />
+          <Input
+            value={newRam}
+            onChange={(event) => setNewRam(event.target.value)}
+            placeholder="RAM (optional)"
+            aria-label="New RAM option"
+          />
+          <Input
+            type="number"
+            value={newPrice}
+            onChange={(event) => setNewPrice(event.target.value)}
+            placeholder="Regular price"
+            aria-label="New regular price"
+          />
+          <Input
+            type="number"
+            value={newDiscountPrice}
+            onChange={(event) => setNewDiscountPrice(event.target.value)}
+            placeholder="Discount price (optional)"
+            aria-label="New discount price"
+          />
+          <Button type="button" size="sm" variant="outline" onClick={addStorageTier}>
+            <Plus className="mr-1 h-4 w-4" /> Add tier
+          </Button>
+        </div>
+      </section>
+
+      <section className="space-y-3 rounded-md border p-3">
+        <div>
+          <Label className="font-medium">Combination inventory</Label>
+          <p className="text-xs text-muted-foreground">
+            Enter a unique SKU and stock quantity for each color and storage/RAM combination.
+          </p>
+        </div>
+        {value.map((variant) => (
+          <div
+            key={variant.id}
+            className="grid grid-cols-1 items-center gap-2 rounded border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]"
+          >
+            <div className="text-sm font-medium">
+              {variant.color || 'Any color'}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {[variant.storage, variant.ram].filter(Boolean).join(' · ') ||
+                'No storage/RAM'}
+            </div>
+            <Input
+              value={variant.sku}
+              onChange={(event) =>
+                updateVariant(variant.id, { sku: event.target.value })
+              }
+              placeholder="SKU"
+              aria-label={`SKU for ${variant.color} ${variant.storage} ${variant.ram}`}
+            />
+            <Input
+              type="number"
+              min="0"
+              step="1"
+              value={variant.stock}
+              onChange={(event) =>
+                updateVariant(variant.id, { stock: event.target.value })
+              }
+              placeholder="Stock"
+              aria-label={`Stock for ${variant.color} ${variant.storage} ${variant.ram}`}
+            />
+            <div className="flex items-center gap-2">
+              <Label className="text-xs">Enabled</Label>
+              <Switch
+                checked={variant.enabled}
+                onCheckedChange={(checked) =>
+                  updateVariant(variant.id, { enabled: checked })
+                }
+              />
+            </div>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }

@@ -254,6 +254,7 @@ const NEST_HANDLED_PREFIXES = [
   "/api/physical-stores",
   "/api/popup-offer",
   "/api/products",
+  "/api/product-filters",
   "/api/promo",
   "/api/questions",
   "/api/service-finders",

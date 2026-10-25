@@ -21,6 +21,7 @@ import {
   ArrowUp,
   ArrowDown,
   Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -112,6 +113,7 @@ export default function CategoriesPage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
   const [featuredOnly, setFeaturedOnly] = useState(false);
+  const [saving, setSaving] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const bannerInputRef = useRef<HTMLInputElement | null>(null);
   const imageFileRef = useRef<File | null>(null);
@@ -332,6 +334,7 @@ export default function CategoriesPage() {
     };
 
     try {
+      setSaving(true);
       if (editing) {
         await categoryApi.update(editing._id, payload, files);
         toast.success('Category updated');
@@ -352,6 +355,8 @@ export default function CategoriesPage() {
           err?.message ||
           'Failed to create category'
       );
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -668,6 +673,7 @@ export default function CategoriesPage() {
         <Dialog
           open={dialogOpen}
           onOpenChange={(o) => {
+            if (saving) return;
             if (!o) {
               imageFileRef.current = null;
               bannerFileRef.current = null;
@@ -928,11 +934,22 @@ export default function CategoriesPage() {
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+                disabled={saving}
+              >
                 Cancel
               </Button>
-              <Button onClick={handleSave}>
-                {editing ? 'Save changes' : 'Create category'}
+              <Button onClick={handleSave} disabled={saving}>
+                {saving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {editing ? 'Saving...' : 'Creating...'}
+                  </>
+                ) : (
+                  <>{editing ? 'Save changes' : 'Create category'}</>
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>

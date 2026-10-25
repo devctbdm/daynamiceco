@@ -132,6 +132,35 @@ export const categoryApi = {
     }),
 };
 
+export type ProductFilterSettings = {
+  categoryId: string;
+  brand: string;
+  price: boolean;
+  rating: boolean;
+  availability: boolean;
+  facets: string[];
+  updatedAt?: string;
+};
+
+export const productFilterApi = {
+  getAll: () =>
+    apiFetch<{ success: boolean; settings: ProductFilterSettings[] }>(
+      '/product-filters'
+    ),
+
+  save: (settings: Omit<ProductFilterSettings, 'updatedAt'>) =>
+    apiFetch<{ success: boolean; settings: ProductFilterSettings }>(
+      '/product-filters',
+      { method: 'PUT', body: settings }
+    ),
+
+  reset: (categoryId: string, brand = '') =>
+    apiFetch<{ success: boolean; message: string }>(
+      `/product-filters/${encodeURIComponent(categoryId)}`,
+      { method: 'DELETE', params: { brand: brand || undefined } }
+    ),
+};
+
 export type SliderType = 'hero' | 'ad_top' | 'ad_bottom';
 
 export type Slider = {
@@ -831,6 +860,14 @@ export type OrderItem = {
   price: number;
   quantity: number;
   image: string;
+  variantId?: string;
+  variantLabel?: string;
+  sku?: string;
+  variant?: {
+    color?: string;
+    storage?: string;
+    ram?: string;
+  };
 };
 
 export type Order = {
@@ -933,7 +970,7 @@ export const orderApi = {
     }),
 
   create: (data: {
-    items: { product: string; quantity: number }[];
+    items: { product: string; variantId?: string; quantity: number }[];
     shippingAddress: Order['shippingAddress'];
     paymentMethod: string;
     note?: string;
@@ -946,7 +983,7 @@ export const orderApi = {
 
   adminCreate: (data: {
     customerId: string;
-    items: { product: string; quantity: number }[];
+    items: { product: string; variantId?: string; quantity: number }[];
     shippingAddress: Order['shippingAddress'];
     paymentMethod: string;
     paymentStatus?: 'pending' | 'paid' | 'failed' | 'cancelled';

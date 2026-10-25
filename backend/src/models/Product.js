@@ -46,6 +46,7 @@ export const productEntries = pgTable(
     seo: jsonb("seo").notNull().default({}),
     ratings: jsonb("ratings").notNull().default([]),
     averageRating: doublePrecision("average_rating").notNull().default(0),
+    variants: jsonb("variants").notNull().default([]),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

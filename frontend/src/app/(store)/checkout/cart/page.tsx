@@ -132,7 +132,10 @@ const CartContent = () => {
             >
               <AnimatePresence mode="popLayout">
                 {items.map((item) => (
-                  <CartItemCard key={item.productId} item={item} />
+                  <CartItemCard
+                    key={`${item.productId}:${item.variantId || ''}`}
+                    item={item}
+                  />
                 ))}
               </AnimatePresence>
             </motion.div>
