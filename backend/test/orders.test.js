@@ -4,6 +4,7 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import { orders } from "../src/models/Order.js";
 import {
   applyCouponToLoyaltyItems,
+  formatOrderStatus,
   serializeOrder,
 } from "../src/orders/orders.service.js";
 import { migrateLegacyOrderData } from "../src/utils/orderNumber.js";
@@ -110,6 +111,11 @@ test("coupon discounts are proportionally applied to loyalty-eligible item price
     { product: { _id: "eligible" }, price: 540, quantity: 1 },
     { product: { _id: "excluded" }, price: 360, quantity: 1 },
   ]);
+});
+
+test("order statuses are formatted for customer notifications", () => {
+  assert.equal(formatOrderStatus("send_courier"), "Send Courier");
+  assert.equal(formatOrderStatus("delivered"), "Delivered");
 });
 
 test("legacy order normalization runs against Neon without Mongoose", async () => {

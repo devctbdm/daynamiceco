@@ -406,6 +406,8 @@ function AccountContent() {
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [viewNotification, setViewNotification] =
+    useState<AdminNotification | null>(null);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [orderPage, setOrderPage] = useState(1);
   const [viewOrder, setViewOrder] = useState<Order | null>(null);
@@ -650,13 +652,14 @@ function AccountContent() {
 
   const markCustomerNotificationRead = async (id: string) => {
     const notification = notifications.find((item) => item._id === id);
-    if (!notification || notification.read) return;
+    if (!notification || notification.read) return true;
     setNotifications((current) =>
       current.map((item) => (item._id === id ? { ...item, read: true } : item))
     );
     setUnreadNotifications((count) => Math.max(0, count - 1));
     try {
       await notificationApi.customerMarkRead(id);
+      return true;
     } catch {
       setNotifications((current) =>
         current.map((item) =>
@@ -665,6 +668,7 @@ function AccountContent() {
       );
       setUnreadNotifications((count) => count + 1);
       toast.error('Failed to update notification');
+      return false;
     }
   };
 
@@ -734,6 +738,10 @@ function AccountContent() {
       toast.error('Failed to log out');
     }
   };
+
+  const viewNotificationOrder = viewNotification?.order
+    ? orders.find((item) => item.id === viewNotification.order)
+    : undefined;
 
   return (
     <div className="min-h-screen bg-gray-50/30">
@@ -809,8 +817,8 @@ function AccountContent() {
               <TabsTrigger value="notifications">
                 <Bell className="mr-2 h-4 w-4" /> Notifications
                 {unreadNotifications > 0 && (
-                  <Badge variant="secondary" className="ml-2">
-                    {unreadNotifications}
+                  <Badge variant="destructive" className="ml-2">
+                    New {unreadNotifications}
                   </Badge>
                 )}
               </TabsTrigger>
@@ -1056,7 +1064,7 @@ function AccountContent() {
                   <div>
                     <CardTitle>Notifications</CardTitle>
                     <CardDescription>
-                      Updates about your orders, including status changes.
+                      Order updates and announcements from Apple IT Zone.
                     </CardDescription>
                   </div>
                   <Button
@@ -1092,8 +1100,11 @@ function AccountContent() {
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="font-medium">{notification.title}</p>
+                            <Badge variant="outline" className="capitalize">
+                              {notification.category}
+                            </Badge>
                             {!notification.read && (
-                              <Badge variant="secondary">New</Badge>
+                              <Badge variant="destructive">NEW</Badge>
                             )}
                           </div>
                           <p className="mt-1 text-sm text-muted-foreground">
@@ -1106,14 +1117,26 @@ function AccountContent() {
                               ).toLocaleString()}
                             </p>
                           )}
-                          {notification.link && (
-                            <Link
-                              href={notification.link}
-                              className="mt-2 inline-block text-sm text-primary underline-offset-4 hover:underline"
-                            >
-                              View details
-                            </Link>
-                          )}
+                          <Button
+                            variant="link"
+                            className="mt-2 h-auto p-0"
+                            onClick={() => {
+                              setViewNotification(notification);
+                              void markCustomerNotificationRead(
+                                notification._id
+                              ).then((updated) => {
+                                if (updated) {
+                                  setViewNotification((current) =>
+                                    current
+                                      ? { ...current, read: true }
+                                      : current
+                                  );
+                                }
+                              });
+                            }}
+                          >
+                            View details
+                          </Button>
                         </div>
                         {!notification.read && (
                           <Button
@@ -1498,6 +1521,70 @@ function AccountContent() {
         phone={user?.phone}
         onClose={() => setViewOrder(null)}
       />
+
+      <Dialog
+        open={!!viewNotification}
+        onOpenChange={(open) => !open && setViewNotification(null)}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <div className="flex flex-wrap items-center gap-2">
+              <DialogTitle>{viewNotification?.title}</DialogTitle>
+              {viewNotification && !viewNotification.read && (
+                <Badge variant="destructive">NEW</Badge>
+              )}
+            </div>
+            <DialogDescription className="capitalize">
+              {viewNotification?.category} update
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="whitespace-pre-wrap text-sm leading-relaxed">
+              {viewNotification?.description}
+            </p>
+            {viewNotification?.createdAt && (
+              <p className="text-xs text-muted-foreground">
+                {new Date(viewNotification.createdAt).toLocaleString()}
+              </p>
+            )}
+            {viewNotification?.link &&
+              viewNotification.link !== '/accounts' && (
+                <Link
+                  href={viewNotification.link}
+                  target={
+                    /^https?:\/\//i.test(viewNotification.link)
+                      ? '_blank'
+                      : undefined
+                  }
+                  rel={
+                    /^https?:\/\//i.test(viewNotification.link)
+                      ? 'noreferrer'
+                      : undefined
+                  }
+                  onClick={() => setViewNotification(null)}
+                  className="inline-block text-sm text-primary underline-offset-4 hover:underline"
+                >
+                  Open related link
+                </Link>
+              )}
+          </div>
+          <DialogFooter>
+            {viewNotificationOrder && (
+              <Button
+                onClick={() => {
+                  setViewNotification(null);
+                  setViewOrder(viewNotificationOrder);
+                }}
+              >
+                View order
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setViewNotification(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete address */}
       <AlertDialog

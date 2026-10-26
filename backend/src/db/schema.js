@@ -9,7 +9,10 @@ import { homeSliderTextEntries } from "../models/HomeSliderText.js";
 import { maintenanceSetting } from "../models/MaintenanceSetting.js";
 import { loyaltySettings } from "../models/LoyaltySettings.js";
 import { loyaltyTransactions } from "../models/LoyaltyTransaction.js";
-import { notificationEntries } from "../models/Notification.js";
+import {
+  notificationCampaignEntries,
+  notificationEntries,
+} from "../models/Notification.js";
 import { offerEntries } from "../models/Offer.js";
 import { orders as customerOrders } from "../models/Order.js";
 import { permissionGroupEntries } from "../models/PermissionGroup.js";
@@ -43,6 +46,7 @@ export {
   loyaltySettings,
   loyaltyTransactions,
   notificationEntries,
+  notificationCampaignEntries,
   offerEntries,
   permissionGroupEntries,
   physicalStoreBannerSettings,

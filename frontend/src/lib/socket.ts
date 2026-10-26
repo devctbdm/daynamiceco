@@ -1,8 +1,9 @@
 import { io, type Socket } from 'socket.io-client';
 import { API_ROOT } from './apiConfig';
 
-// Socket.io connects to the API origin (the root URL, without the /api suffix).
-const SOCKET_URL = API_ROOT;
+// Keep Socket.IO on the API host; the Next.js API route proxies HTTP, not
+// Socket.IO upgrades.
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || API_ROOT;
 
 let socket: Socket | null = null;
 let socketToken: string | null = null;

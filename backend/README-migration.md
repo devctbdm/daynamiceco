@@ -79,8 +79,9 @@ The API host now runs on NestJS and can be started with:
   session tracking and management also use Neon.
 - Authenticated saved PC builds use NestJS/Neon, including product-backed
   component pricing and user-scoped deletion.
-- Admin notification history, read/unread controls, order/payment notification
-  persistence, and real-time Socket.IO events use NestJS/Neon.
+- Admin notification history, read/unread controls, customer announcement
+  campaigns, order/payment notification persistence, and real-time Socket.IO
+  events use NestJS/Neon.
 
 The default `npm start` and `npm run dev` commands start the NestJS host. It
 mounts the remaining Express compatibility API — invoices, audit log, payment
@@ -192,6 +193,17 @@ for admin notifications. The authenticated admin list, unread-count, mark-read,
 and mark-all-read endpoints use NestJS/Neon. Order and payment workflows persist
 notifications in Neon and continue broadcasting the existing
 `notification:new` Socket.IO event.
+
+The API starts a Redis notification worker automatically so order-status
+updates are saved to the customer inbox without a separate local process.
+Additional workers can be run with `npm run worker:notifications`.
+
+The customer notification CMS stores campaign definitions in
+`notification_campaign_entries` and delivers one user-scoped inbox item to every
+active customer. Admins can create, edit, and delete campaigns; customer inbox
+read state and campaign read counts are tracked independently per user. Apply
+`drizzle/20261026130000_notification_campaigns/migration.sql` before deploying
+the CMS and storefront changes.
 
 Mongo notifications are not imported automatically. After reviewing and
 applying the generated migration, inspect the import with

@@ -6,14 +6,11 @@ import {
   Package,
   Truck,
   User,
-  Megaphone,
   CreditCard,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -27,6 +24,7 @@ import {
 } from '@/components/ui/pagination';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
+import NotificationCampaignManager from '@/components/admin/NotificationCampaignManager';
 import {
   notificationApi,
   type AdminNotification,
@@ -43,7 +41,7 @@ const categoryIcon: Record<AdminNotificationCategory, React.ElementType> = {
   delivery: Truck,
   rider: User,
   payment: CreditCard,
-  system: Megaphone,
+  system: Bell,
 };
 
 const categoryColor: Record<AdminNotificationCategory, string> = {
@@ -116,12 +114,6 @@ export default function NotificationsPage() {
   const [orderCount, setOrderCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  const [newOrdersEnabled, setNewOrdersEnabled] = useState(true);
-  const [advancePaymentEnabled, setAdvancePaymentEnabled] = useState(true);
-  const [deliveryUpdatesEnabled, setDeliveryUpdatesEnabled] = useState(true);
-  const [riderUpdatesEnabled, setRiderUpdatesEnabled] = useState(true);
-  const [promotionsEnabled, setPromotionsEnabled] = useState(false);
-
   const loadPage = (p = page, f = filter) => {
     const params: Record<string, unknown> = { page: p, limit: PAGE_SIZE };
     if (f === 'unread') params.read = 'false';
@@ -137,7 +129,7 @@ export default function NotificationsPage() {
           setPages(res.data.pages);
         }
       })
-      .catch(() => {})
+      .catch(() => toast.error('Failed to load notifications'))
       .finally(() => setLoading(false));
   };
 
@@ -147,7 +139,7 @@ export default function NotificationsPage() {
       .then((res) => {
         if (res.data.success) setOrderCount(res.data.total);
       })
-      .catch(() => {});
+      .catch(() => toast.error('Failed to load order notification count'));
   };
 
   // Keep refs to the latest loaders for the socket handler (avoids stale state).
@@ -193,6 +185,7 @@ export default function NotificationsPage() {
   const pageItems = useMemo(() => getPageItems(page, pages), [page, pages]);
 
   const markAllAsRead = async () => {
+    const previous = notifications;
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     try {
       await notificationApi.markAllRead();
@@ -201,11 +194,13 @@ export default function NotificationsPage() {
       loadPage();
       loadOrderCount();
     } catch {
+      setNotifications(previous);
       toast.error('Failed to mark all as read');
     }
   };
 
   const markAsRead = async (id: string) => {
+    const previous = notifications;
     setNotifications((prev) =>
       prev.map((n) => (n._id === id ? { ...n, read: true } : n))
     );
@@ -215,7 +210,8 @@ export default function NotificationsPage() {
       loadPage();
       loadOrderCount();
     } catch {
-      // optimistic update already applied; ignore network failure
+      setNotifications(previous);
+      toast.error('Failed to mark notification as read');
     }
   };
 
@@ -224,13 +220,17 @@ export default function NotificationsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Notifications</h1>
         <p className="text-sm text-muted-foreground">
-          Stay updated with orders, deliveries and rider activity.
+          Publish customer inbox announcements and monitor store activity.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="mb-6">
+        <NotificationCampaignManager />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6">
         {/* Left column: notifications list */}
-        <div className="lg:col-span-2">
+        <div>
           <Card className="h-full">
             <CardHeader className="flex flex-col gap-4 pb-4">
               <div className="flex items-start justify-between gap-4">
@@ -422,69 +422,6 @@ export default function NotificationsPage() {
                   </PaginationContent>
                 </Pagination>
               )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right column: settings */}
-        <div className="space-y-6">
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-2">
-                <Bell className="h-5 w-5 text-primary" />
-                <CardTitle className="text-base">
-                  Notification settings
-                </CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-5 pt-0">
-              <div className="flex items-center justify-between gap-4">
-                <div className="space-y-0.5">
-                  <Label htmlFor="new-orders" className="font-medium">
-                    New orders
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    Get notified when a new order is placed.
-                  </p>
-                </div>
-                <Switch
-                  id="new-orders"
-                  checked={newOrdersEnabled}
-                  onCheckedChange={setNewOrdersEnabled}
-                />
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <div className="space-y-0.5">
-                  <Label htmlFor="advance-payment" className="font-medium">
-                    Advance payment notification
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    Alerts for partial and full advance payments.
-                  </p>
-                </div>
-                <Switch
-                  id="advance-payment"
-                  checked={advancePaymentEnabled}
-                  onCheckedChange={setAdvancePaymentEnabled}
-                />
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <div className="space-y-0.5">
-                  <Label htmlFor="promotions" className="font-medium">
-                    Promotions & system
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    Low stock and platform announcements.
-                  </p>
-                </div>
-                <Switch
-                  id="promotions"
-                  checked={promotionsEnabled}
-                  onCheckedChange={setPromotionsEnabled}
-                />
-              </div>
             </CardContent>
           </Card>
         </div>

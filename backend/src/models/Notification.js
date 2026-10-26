@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -19,6 +20,7 @@ export const notificationEntries = pgTable(
     read: boolean("read").notNull().default(false),
     orderId: text("order_id"),
     userId: text("user_id"),
+    campaignId: text("campaign_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -39,6 +41,7 @@ export const notificationEntries = pgTable(
       table.userId,
       table.createdAt,
     ),
+    index("notification_entries_campaign_id_idx").on(table.campaignId),
     check(
       "notification_entries_category_check",
       sql`${table.category} in ('order', 'delivery', 'rider', 'payment', 'system')`,
@@ -54,12 +57,46 @@ export const notificationEntries = pgTable(
   ],
 );
 
+export const notificationCampaignEntries = pgTable(
+  "notification_campaign_entries",
+  {
+    id: text("id").primaryKey(),
+    category: text("category").notNull().default("system"),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    link: text("link").notNull().default(""),
+    recipientCount: integer("recipient_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("notification_campaign_entries_created_at_idx").on(table.createdAt),
+    check(
+      "notification_campaign_entries_category_check",
+      sql`${table.category} in ('order', 'delivery', 'rider', 'payment', 'system')`,
+    ),
+    check(
+      "notification_campaign_entries_title_check",
+      sql`length(trim(${table.title})) > 0`,
+    ),
+    check(
+      "notification_campaign_entries_description_check",
+      sql`length(trim(${table.description})) > 0`,
+    ),
+  ],
+);
+
 export function serializeNotification(row) {
   if (!row) return null;
-  const { id, orderId, userId, ...notification } = row;
+  const { id, orderId, userId, campaignId, ...notification } = row;
   return {
     ...notification,
     order: orderId,
+    ...(campaignId ? { campaignId } : {}),
     _id: id,
   };
 }

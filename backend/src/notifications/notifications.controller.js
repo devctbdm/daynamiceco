@@ -1,11 +1,14 @@
 import {
   Controller,
+  Delete,
   Get,
   ForbiddenException,
   HttpCode,
   Inject,
   Patch,
   Post,
+  Put,
+  Body,
   Param,
   Query,
   Req,
@@ -58,6 +61,22 @@ class NotificationsController {
       request.user._id ?? request.user.id,
     );
   }
+
+  getCampaigns(query) {
+    return this.notificationsService.getCampaigns(query);
+  }
+
+  createCampaign(body) {
+    return this.notificationsService.createCampaign(body);
+  }
+
+  updateCampaign(id, body) {
+    return this.notificationsService.updateCampaign(id, body);
+  }
+
+  deleteCampaign(id) {
+    return this.notificationsService.deleteCampaign(id);
+  }
 }
 
 Controller("notifications")(NotificationsController);
@@ -68,6 +87,10 @@ for (const method of [
   "getUnreadCount",
   "markRead",
   "markAllRead",
+  "getCampaigns",
+  "createCampaign",
+  "updateCampaign",
+  "deleteCampaign",
 ]) {
   UseGuards(LegacyAdminGuard)(
     NotificationsController.prototype,
@@ -75,6 +98,47 @@ for (const method of [
     Object.getOwnPropertyDescriptor(NotificationsController.prototype, method),
   );
 }
+
+Get("campaigns")(
+  NotificationsController.prototype,
+  "getCampaigns",
+  Object.getOwnPropertyDescriptor(
+    NotificationsController.prototype,
+    "getCampaigns",
+  ),
+);
+Query()(NotificationsController.prototype, "getCampaigns", 0);
+
+Post("campaigns")(
+  NotificationsController.prototype,
+  "createCampaign",
+  Object.getOwnPropertyDescriptor(
+    NotificationsController.prototype,
+    "createCampaign",
+  ),
+);
+Body()(NotificationsController.prototype, "createCampaign", 0);
+
+Put("campaigns/:id")(
+  NotificationsController.prototype,
+  "updateCampaign",
+  Object.getOwnPropertyDescriptor(
+    NotificationsController.prototype,
+    "updateCampaign",
+  ),
+);
+Param("id")(NotificationsController.prototype, "updateCampaign", 0);
+Body()(NotificationsController.prototype, "updateCampaign", 1);
+
+Delete("campaigns/:id")(
+  NotificationsController.prototype,
+  "deleteCampaign",
+  Object.getOwnPropertyDescriptor(
+    NotificationsController.prototype,
+    "deleteCampaign",
+  ),
+);
+Param("id")(NotificationsController.prototype, "deleteCampaign", 0);
 
 Get()(
   NotificationsController.prototype,

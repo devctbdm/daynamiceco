@@ -1979,6 +1979,7 @@ export type AdminNotification = {
   category: AdminNotificationCategory;
   read: boolean;
   link?: string;
+  order?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -2017,11 +2018,34 @@ export const notificationApi = {
       method: 'POST',
     }),
 
-  customerList: (params?: {
-    page?: number;
-    limit?: number;
-    read?: boolean;
-  }) =>
+  campaigns: (params?: { page?: number; limit?: number }) =>
+    apiFetch<{
+      success: boolean;
+      campaigns: NotificationCampaign[];
+      total: number;
+      page: number;
+      pages: number;
+    }>('/notifications/campaigns', { params }),
+
+  createCampaign: (data: NotificationCampaignInput) =>
+    apiFetch<{ success: boolean; campaign: NotificationCampaign }>(
+      '/notifications/campaigns',
+      { method: 'POST', body: data }
+    ),
+
+  updateCampaign: (id: string, data: NotificationCampaignInput) =>
+    apiFetch<{ success: boolean; campaign: NotificationCampaign }>(
+      `/notifications/campaigns/${id}`,
+      { method: 'PUT', body: data }
+    ),
+
+  deleteCampaign: (id: string) =>
+    apiFetch<{ success: boolean; message: string }>(
+      `/notifications/campaigns/${id}`,
+      { method: 'DELETE' }
+    ),
+
+  customerList: (params?: { page?: number; limit?: number; read?: boolean }) =>
     apiFetch<{
       success: boolean;
       notifications: AdminNotification[];
@@ -2042,6 +2066,21 @@ export const notificationApi = {
       '/notifications/customer/read-all',
       { method: 'POST' }
     ),
+};
+
+export type NotificationCampaignInput = {
+  title: string;
+  description: string;
+  category: AdminNotificationCategory;
+  link: string;
+};
+
+export type NotificationCampaign = NotificationCampaignInput & {
+  _id: string;
+  recipientCount: number;
+  readCount: number;
+  createdAt: string;
+  updatedAt: string;
 };
 
 // ─── Staff & Access Management ────────────────────────────────────────────────

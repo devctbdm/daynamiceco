@@ -11,7 +11,10 @@ import {
   initSocket,
   queueAdminNotificationRefresh,
 } from "./src/socket.js";
-import { startNotificationRefreshSubscriber } from "./src/notifications/notification-queue.js";
+import {
+  startNotificationRefreshSubscriber,
+  startNotificationWorker,
+} from "./src/notifications/notification-queue.js";
 import {
   backfillOrderNumbers,
   migrateLegacyOrderData,
@@ -32,6 +35,8 @@ try {
 
 // Redis is required for notification queueing.
 await connectRedis({ required: true });
+const stopNotificationWorker = await startNotificationWorker();
+console.log("🔔 Notification queue worker is running");
 
 const orderMigration = await migrateLegacyOrderData(getDatabase());
 if (orderMigration.statuses) {
@@ -71,6 +76,7 @@ console.log(`🚀 NestJS server running on http://localhost:${PORT}`);
 const shutdown = async (signal) => {
   console.log(`🛑 Received ${signal}. Shutting down gracefully...`);
   await stopNotificationRefreshSubscriber();
+  await stopNotificationWorker();
   await nestApp.close();
   await closeDatabase();
   await closeRedis();

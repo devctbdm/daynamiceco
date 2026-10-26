@@ -498,15 +498,6 @@ class OrdersService {
           }),
         );
       }
-      const label =
-        status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " ");
-      await createNotification({
-        category: "order",
-        title: `Order ${label}`,
-        description: `Order ${updated.orderNumber} status is now ${label}.`,
-        link: `/admin/orders?id=${updated._id}`,
-        order: updated._id,
-      });
       await createCustomerNotification({
         userId: String(order.user?._id ?? order.user),
         category: "order",
@@ -912,17 +903,17 @@ class OrdersService {
   }
 }
 
+export function formatOrderStatus(status) {
+  return String(status || "")
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function validNonnegative(value, message) {
   const number = Number(value);
   if (!Number.isFinite(number) || number < 0) {
     throw new BadRequestException({ success: false, message });
-  }
-
-  function formatOrderStatus(status) {
-    return String(status || "")
-      .split("_")
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
   }
   return number;
 }
