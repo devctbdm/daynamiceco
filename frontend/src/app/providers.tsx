@@ -1,8 +1,8 @@
 'use client';
 
-import { ReactNode } from 'react';
-import { useHydrated } from '@/hooks/useHydrated';
 import { AuthProvider } from '@/context/AuthContext';
+import { useHydrated } from '@/hooks/useHydrated';
+import { ReactNode } from 'react';
 
 export function Providers({ children }: { children: ReactNode }) {
   const hydrated = useHydrated();
@@ -12,9 +12,5 @@ export function Providers({ children }: { children: ReactNode }) {
     return null; // Or a loading skeleton
   }
 
-  return (
-    <AuthProvider>
-      {children}
-    </AuthProvider>
-  );
+  return <AuthProvider>{children}</AuthProvider>;
 }

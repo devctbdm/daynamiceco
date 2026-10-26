@@ -18,6 +18,7 @@ export const notificationEntries = pgTable(
     link: text("link").notNull().default(""),
     read: boolean("read").notNull().default(false),
     orderId: text("order_id"),
+    userId: text("user_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -28,6 +29,16 @@ export const notificationEntries = pgTable(
   (table) => [
     index("notification_entries_created_at_idx").on(table.createdAt),
     index("notification_entries_read_idx").on(table.read),
+    index("notification_entries_read_updated_at_idx")
+      .on(table.updatedAt)
+      .where(sql`${table.read} = true`),
+    index("notification_entries_unread_created_at_idx")
+      .on(table.createdAt)
+      .where(sql`${table.read} = false`),
+    index("notification_entries_user_created_at_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
     check(
       "notification_entries_category_check",
       sql`${table.category} in ('order', 'delivery', 'rider', 'payment', 'system')`,
@@ -45,7 +56,7 @@ export const notificationEntries = pgTable(
 
 export function serializeNotification(row) {
   if (!row) return null;
-  const { id, orderId, ...notification } = row;
+  const { id, orderId, userId, ...notification } = row;
   return {
     ...notification,
     order: orderId,

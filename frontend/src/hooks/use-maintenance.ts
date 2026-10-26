@@ -16,6 +16,7 @@ import { maintenanceApi, type MaintenanceStatus } from '@/lib/api';
  *     consumer unmounts, so navigation remounts don't tear it down / refetch
  *   - a stale check means a remount only refetches when the data is actually
  *     older than the poll interval
+ *   - background polling stops when maintenance and browse-only mode are off
  */
 
 let status: MaintenanceStatus | null = null;
@@ -26,6 +27,8 @@ let intervalMs = 0;
 let stopTimer: ReturnType<typeof setTimeout> | null = null;
 let refCount = 0;
 const listeners = new Set<() => void>();
+const pollIntervals = new Map<() => void, number>();
+let inFlight: Promise<void> | null = null;
 
 // Keep the poller alive briefly after the last subscriber leaves so route
 // changes (which remount layout components) reuse it instead of restarting it.
@@ -40,32 +43,55 @@ function getSnapshot() {
   return status;
 }
 
+function needsPolling() {
+  return status === null || status.enabled || status.sellingEnabled === false;
+}
+
+function getPollInterval() {
+  const intervals = [...pollIntervals.values()].filter((ms) => ms > 0);
+  return intervals.length > 0 ? Math.min(...intervals) : DEFAULT_POLL_MS;
+}
+
 async function refresh(force: boolean) {
-  if (!force && Date.now() - lastFetchAt < 2000) return;
+  if (inFlight) return inFlight;
+  if (!force && Date.now() - lastFetchAt < getPollInterval()) return;
   lastFetchAt = Date.now();
-  try {
-    const { data } = await maintenanceApi.getStatus();
-    status = data.maintenance;
-  } catch {
-    // keep the last known status; the maintenance page shows defaults on failure
-  } finally {
-    hasLoaded = true;
-    emit();
-  }
+  inFlight = (async () => {
+    try {
+      const { data } = await maintenanceApi.getStatus();
+      status = data.maintenance;
+    } catch {
+      // keep the last known status; the maintenance page shows defaults on failure
+    } finally {
+      hasLoaded = true;
+      ensurePolling();
+      emit();
+      inFlight = null;
+    }
+  })();
+  return inFlight;
 }
 
 function onFocus() {
-  refresh(true);
+  if (needsPolling() || Date.now() - lastFetchAt >= getPollInterval()) {
+    void refresh(false);
+  }
 }
 
-function ensurePolling(ms: number) {
-  if (typeof window === 'undefined' || ms <= 0) return;
-  // Already polling at least this frequently — keep the existing timer so it
-  // isn't reset on every remount.
-  if (timer && intervalMs <= ms) return;
+function ensurePolling() {
+  if (typeof window === 'undefined') return;
+  if (!needsPolling()) {
+    if (timer) clearInterval(timer);
+    timer = null;
+    intervalMs = 0;
+    return;
+  }
+
+  const ms = getPollInterval();
+  if (timer && intervalMs === ms) return;
   if (timer) clearInterval(timer);
   intervalMs = ms;
-  timer = setInterval(() => refresh(true), ms);
+  timer = setInterval(() => void refresh(true), ms);
 }
 
 function addFocusListener() {
@@ -94,20 +120,19 @@ function subscribe(cb: () => void, pollMs: number) {
   }
 
   const maxAge = pollMs > 0 ? pollMs : DEFAULT_POLL_MS;
-  if (!timer) {
-    // No poller running: fetch immediately if we've never loaded or the cached
-    // status is stale, then (re)start polling.
-    if (!hasLoaded || Date.now() - lastFetchAt > maxAge) {
-      refresh(true);
-    }
-    addFocusListener();
+  pollIntervals.set(cb, pollMs);
+  if (!hasLoaded || (!needsPolling() && Date.now() - lastFetchAt > maxAge)) {
+    void refresh(true);
   }
 
-  ensurePolling(pollMs);
+  addFocusListener();
+  ensurePolling();
 
   return () => {
     listeners.delete(cb);
+    pollIntervals.delete(cb);
     refCount -= 1;
+    ensurePolling();
     if (refCount <= 0) {
       refCount = 0;
       stopTimer = setTimeout(() => {

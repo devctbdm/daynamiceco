@@ -57,20 +57,13 @@ export default function AdminLayoutClient({
   children: React.ReactNode;
   brandName: string;
 }) {
-  const { user, isLoading, fetchUser } = useAuth();
+  const { user, isLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   useLayoutEffect(() => {
     document.title = `Admin | ${brandName}`;
   }, [pathname, brandName]);
-
-  useEffect(() => {
-    // Always revalidate the session in the background. When the store was
-    // hydrated from the session snapshot this only refreshes `user`; when it
-    // is a genuinely new session it performs the `/auth/me` bootstrap.
-    fetchUser();
-  }, [fetchUser]);
 
   useEffect(() => {
     if (isLoading) return;

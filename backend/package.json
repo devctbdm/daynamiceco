@@ -6,6 +6,7 @@
   "scripts": {
     "test": "node --test test/*.test.js",
     "start": "node server.js",
+    "worker:notifications": "node scripts/notification-worker.js",
     "dev": "node --watch server.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

@@ -1,8 +1,7 @@
-import { createNotificationEntry } from "../notifications/notifications.repository.js";
-import { emitToAdmins } from "../socket.js";
+import { enqueueNotification } from "../notifications/notification-queue.js";
 
-// Persist a notification and push it to every connected admin client in
-// real time. Notification failures do not block the order/payment request.
+// Queue notifications in Redis so the order/payment request does not wait for
+// a PostgreSQL write. Redis queue failures do not block the primary operation.
 export async function createNotification({
   category = "system",
   title,
@@ -11,27 +10,38 @@ export async function createNotification({
   order = null,
 }) {
   try {
-    const doc = await createNotificationEntry({
+    return await enqueueNotification({
       category,
       title,
       description,
       link,
       order,
     });
-
-    emitToAdmins("notification:new", {
-      _id: doc._id,
-      category: doc.category,
-      title: doc.title,
-      description: doc.description,
-      link: doc.link,
-      read: doc.read,
-      createdAt: doc.createdAt,
-    });
-
-    return doc;
   } catch (err) {
     console.error("createNotification failed:", err.message);
+    return null;
+  }
+}
+
+export async function createCustomerNotification({
+  userId,
+  category = "order",
+  title,
+  description,
+  link = "/accounts",
+  order = null,
+}) {
+  try {
+    return await enqueueNotification({
+      userId,
+      category,
+      title,
+      description,
+      link,
+      order,
+    });
+  } catch (err) {
+    console.error("createCustomerNotification failed:", err.message);
     return null;
   }
 }

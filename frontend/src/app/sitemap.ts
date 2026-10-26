@@ -1,5 +1,5 @@
-import type { MetadataRoute } from 'next';
 import { getApiBase } from '@/lib/apiConfig';
+import type { MetadataRoute } from 'next';
 
 const API_BASE = getApiBase();
 

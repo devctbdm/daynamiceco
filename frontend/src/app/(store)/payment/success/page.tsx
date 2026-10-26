@@ -116,14 +116,16 @@ function SuccessContent() {
     let active = true;
     (async () => {
       try {
+        let paymentValidated = false;
         if (tran_id) {
           const { data } = await paymentApi.validate({
             tran_id,
             val_id,
           });
           if (data.valid) {
+            paymentValidated = true;
             if (active) setVerified(true);
-            clearCart();
+            await clearCart();
             if (typeof window !== 'undefined') {
               sessionStorage.removeItem('aiz_pending_order');
             }
@@ -132,6 +134,15 @@ function SuccessContent() {
         if (orderId) {
           const res = await orderApi.getById(orderId);
           if (active && res.data.order) setOrder(res.data.order);
+          if (
+            !paymentValidated &&
+            res.data.order?.payment?.status === 'paid'
+          ) {
+            await clearCart();
+            if (typeof window !== 'undefined') {
+              sessionStorage.removeItem('aiz_pending_order');
+            }
+          }
         }
       } catch {
         /* ignore */

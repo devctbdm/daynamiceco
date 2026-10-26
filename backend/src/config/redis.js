@@ -79,11 +79,14 @@ export const createRedisClient = () => {
 };
 
 /**
- * Connect to Redis at startup. Failures are non-fatal.
+ * Connect to Redis at startup. Callers may require Redis for critical services.
  */
-export const connectRedis = async () => {
+export const connectRedis = async ({ required = false } = {}) => {
   const c = createRedisClient();
-  if (!c) return null;
+  if (!c) {
+    if (required) throw new Error("Redis is required but is not configured");
+    return null;
+  }
   // Never let a broken Redis stall server startup. The socket connectTimeout
   // makes the underlying connect() reject, but we guard anyway.
   let timer;
@@ -101,7 +104,13 @@ export const connectRedis = async () => {
     return c;
   } catch (err) {
     clearTimeout(timer);
-    console.error('❌ Redis connection failed (continuing without cache):', err.message);
+    console.error(
+      required
+        ? "❌ Required Redis connection failed:"
+        : "❌ Redis connection failed (continuing without cache):",
+      err.message,
+    );
+    if (required) throw err;
     return null;
   } finally {
     clearTimeout(timer);
@@ -110,6 +119,14 @@ export const connectRedis = async () => {
 
 /** Returns the connected client, or null if not ready. */
 export const getRedis = () => (isReady ? client : null);
+
+export const closeRedis = async () => {
+  if (!client) return;
+  const currentClient = client;
+  client = null;
+  isReady = false;
+  if (currentClient.isOpen) await currentClient.quit();
+};
 
 // Wrap a redis command with a timeout so a wedged connection can never hang a request.
 const withTimeout = (promise, ms = 2000) => {

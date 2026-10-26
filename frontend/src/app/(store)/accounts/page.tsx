@@ -21,6 +21,8 @@ import {
   XCircle,
   ShoppingBag,
   Award,
+  Bell,
+  CheckCheck,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -46,7 +48,6 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination';
-import { motion } from 'motion/react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -67,17 +68,21 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useWishlist, useCart, useAuth } from '@/store';
 import { useStoreStatus } from '@/components/store/StoreStatusProvider';
 import {
   authApi,
   loyaltyApi,
   orderApi,
+  notificationApi,
+  type AdminNotification,
   paymentApi,
   SavedAddress,
   type LoyaltyTransaction,
 } from '@/lib/api';
 import RequireAuth from '@/components/store/layout/RequireAuth';
+import { getSocket } from '@/lib/socket';
 
 type OrderStatus =
   | 'pending'
@@ -132,6 +137,7 @@ type Address = {
   label: string;
   fullName: string;
   phone: string;
+  company: string;
   line1: string;
   city: string;
   region: string;
@@ -177,6 +183,7 @@ const mapBackendAddress = (a: SavedAddress): Address => ({
   label: a.label,
   fullName: a.fullName,
   phone: a.phone,
+  company: a.company || '',
   line1: a.street,
   city: a.city,
   region: a.state,
@@ -360,25 +367,45 @@ const passwordSchema = z
   });
 
 const addressSchema = z.object({
-  label: z.string().trim().min(1).max(30),
-  fullName: z.string().trim().min(1).max(80),
+  label: z.string().trim().max(30),
+  firstName: z.string().trim().min(1, 'First name is required').max(40),
+  lastName: z.string().trim().min(1, 'Last name is required').max(40),
+  company: z.string().trim().max(80),
   phone: z.string().trim().min(6).max(30),
-  line1: z.string().trim().min(1).max(160),
-  city: z.string().trim().min(1).max(80),
-  region: z.string().trim().min(1).max(80),
-  postal: z.string().trim().min(1).max(20),
-  country: z.string().trim().min(1).max(80),
+  line1: z.string().trim().min(1, 'Address is required').max(160),
+  city: z.string().trim().min(1, 'City is required').max(80),
+  region: z.string().trim().min(1, 'Region / State is required').max(80),
+  postal: z.string().trim().min(1, 'Postcode is required').max(20),
+  country: z.string().trim().min(1, 'Country is required').max(80),
   deliveryArea: z.string().trim().max(160).default(''),
 });
 
+const emptyAddressForm = () => ({
+  label: '',
+  firstName: '',
+  lastName: '',
+  company: '',
+  phone: '',
+  line1: '',
+  city: '',
+  region: '',
+  postal: '',
+  country: '',
+  deliveryArea: '',
+});
+
 function AccountContent() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const router = useRouter();
   const [profile, setProfile] = useState({
     name: user?.name || 'Guest',
     email: user?.email || '',
     phone: user?.phone || '',
   });
   const [orders, setOrders] = useState<Order[]>([]);
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [orderPage, setOrderPage] = useState(1);
   const [viewOrder, setViewOrder] = useState<Order | null>(null);
@@ -468,6 +495,42 @@ function AccountContent() {
 
   useEffect(() => {
     if (!isCustomer) {
+      setNotificationsLoading(false);
+      return;
+    }
+
+    setNotificationsLoading(true);
+    let active = true;
+    const loadNotifications = () =>
+      notificationApi
+        .customerList({ limit: 50 })
+        .then(({ data }) => {
+          if (!active || !data.success) return;
+          setNotifications(data.notifications);
+          setUnreadNotifications(data.unreadCount);
+        })
+        .catch(() => {
+          if (active) toast.error('Failed to load notifications');
+        })
+        .finally(() => {
+          if (active) setNotificationsLoading(false);
+        });
+
+    void loadNotifications();
+    const socket = getSocket();
+    const onNotification = () => {
+      void loadNotifications();
+    };
+    socket.on('notification:new', onNotification);
+
+    return () => {
+      active = false;
+      socket.off('notification:new', onNotification);
+    };
+  }, [isCustomer, user?.id]);
+
+  useEffect(() => {
+    if (!isCustomer) {
       setRewardsLoading(false);
       return;
     }
@@ -544,9 +607,10 @@ function AccountContent() {
     id?: string
   ) => {
     const payload = {
-      label: values.label,
-      fullName: values.fullName,
+      label: values.label || 'Home',
+      fullName: `${values.firstName} ${values.lastName}`.trim(),
       phone: values.phone,
+      company: values.company,
       street: values.line1,
       city: values.city,
       state: values.region,
@@ -582,6 +646,42 @@ function AccountContent() {
   const removeWish = (id: string) => {
     removeFromWishlist(id);
     toast.success('Removed from wishlist');
+  };
+
+  const markCustomerNotificationRead = async (id: string) => {
+    const notification = notifications.find((item) => item._id === id);
+    if (!notification || notification.read) return;
+    setNotifications((current) =>
+      current.map((item) => (item._id === id ? { ...item, read: true } : item))
+    );
+    setUnreadNotifications((count) => Math.max(0, count - 1));
+    try {
+      await notificationApi.customerMarkRead(id);
+    } catch {
+      setNotifications((current) =>
+        current.map((item) =>
+          item._id === id ? { ...item, read: false } : item
+        )
+      );
+      setUnreadNotifications((count) => count + 1);
+      toast.error('Failed to update notification');
+    }
+  };
+
+  const markAllCustomerNotificationsRead = async () => {
+    const previous = notifications;
+    const previousUnread = unreadNotifications;
+    setNotifications((current) =>
+      current.map((item) => ({ ...item, read: true }))
+    );
+    setUnreadNotifications(0);
+    try {
+      await notificationApi.customerMarkAllRead();
+    } catch {
+      setNotifications(previous);
+      setUnreadNotifications(previousUnread);
+      toast.error('Failed to update notifications');
+    }
   };
 
   const payAdvance = async (o: Order) => {
@@ -626,6 +726,15 @@ function AccountContent() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.replace('/');
+    } catch {
+      toast.error('Failed to log out');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50/30">
       <div className="mx-auto max-w-6xl px-4 py-8">
@@ -642,7 +751,7 @@ function AccountContent() {
                 <p className="text-sm text-gray-600">{profile.phone}</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 sm:justify-end">
               <Button
                 variant="outline"
                 onClick={() => setEditProfileOpen(true)}
@@ -651,6 +760,9 @@ function AccountContent() {
               </Button>
               <Button variant="outline" onClick={() => setChangePassOpen(true)}>
                 <KeyRound className="mr-2 h-4 w-4" /> Change password
+              </Button>
+              <Button variant="outline" onClick={handleLogout}>
+                <LogOut className="mr-2 h-4 w-4" /> Log out
               </Button>
             </div>
           </CardContent>
@@ -663,12 +775,14 @@ function AccountContent() {
             value={stats.orders}
             Icon={Package}
             tone="bg-blue-50 text-blue-600"
+            loading={ordersLoading}
           />
           <StatCard
             label="In Progress"
             value={stats.pending}
             Icon={Truck}
             tone="bg-amber-50 text-amber-600"
+            loading={ordersLoading}
           />
           <StatCard
             label="Wishlist Items"
@@ -681,15 +795,26 @@ function AccountContent() {
             value={stats.addresses}
             Icon={MapPin}
             tone="bg-emerald-50 text-emerald-600"
+            loading={addressesLoading}
           />
         </div>
 
         {/* Tabs */}
         <Tabs defaultValue="orders" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-6">
             <TabsTrigger value="orders">
               <Package className="mr-2 h-4 w-4" /> Orders
             </TabsTrigger>
+            {isCustomer && (
+              <TabsTrigger value="notifications">
+                <Bell className="mr-2 h-4 w-4" /> Notifications
+                {unreadNotifications > 0 && (
+                  <Badge variant="secondary" className="ml-2">
+                    {unreadNotifications}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            )}
             <TabsTrigger value="wishlist">
               <Heart className="mr-2 h-4 w-4" /> Wishlist
             </TabsTrigger>
@@ -724,13 +849,7 @@ function AccountContent() {
                   />
                 ) : (
                   <>
-                    <motion.div
-                      key={orderPage}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.25 }}
-                      className="space-y-3"
-                    >
+                    <div className="space-y-3">
                       {paginatedOrders.map((o) => {
                         const meta = statusMeta[o.status] || statusMeta.pending;
                         const Icon = meta.Icon;
@@ -869,7 +988,7 @@ function AccountContent() {
                           </div>
                         );
                       })}
-                    </motion.div>
+                    </div>
 
                     {totalOrderPages > 1 && (
                       <Pagination className="pt-1">
@@ -929,6 +1048,91 @@ function AccountContent() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {isCustomer && (
+            <TabsContent value="notifications" className="mt-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-4">
+                  <div>
+                    <CardTitle>Notifications</CardTitle>
+                    <CardDescription>
+                      Updates about your orders, including status changes.
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={markAllCustomerNotificationsRead}
+                    disabled={unreadNotifications === 0}
+                  >
+                    <CheckCheck className="mr-2 h-4 w-4" />
+                    Mark all read
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {notificationsLoading ? (
+                    <div className="space-y-3">
+                      <Skeleton className="h-20 w-full" />
+                      <Skeleton className="h-20 w-full" />
+                    </div>
+                  ) : notifications.length === 0 ? (
+                    <EmptyState
+                      Icon={Bell}
+                      title="No notifications"
+                      hint="Order updates will appear here."
+                    />
+                  ) : (
+                    notifications.map((notification) => (
+                      <div
+                        key={notification._id}
+                        className={`flex items-start justify-between gap-4 rounded-lg border p-4 ${
+                          notification.read ? 'bg-card' : 'bg-primary/5'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-medium">{notification.title}</p>
+                            {!notification.read && (
+                              <Badge variant="secondary">New</Badge>
+                            )}
+                          </div>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {notification.description}
+                          </p>
+                          {notification.createdAt && (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {new Date(
+                                notification.createdAt
+                              ).toLocaleString()}
+                            </p>
+                          )}
+                          {notification.link && (
+                            <Link
+                              href={notification.link}
+                              className="mt-2 inline-block text-sm text-primary underline-offset-4 hover:underline"
+                            >
+                              View details
+                            </Link>
+                          )}
+                        </div>
+                        {!notification.read && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              markCustomerNotificationRead(notification._id)
+                            }
+                          >
+                            Mark read
+                          </Button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
 
           {/* Wishlist */}
           <TabsContent value="wishlist" className="mt-4">
@@ -1074,6 +1278,7 @@ function AccountContent() {
                             {a.fullName}
                           </p>
                           <p>{a.phone}</p>
+                          {a.company && <p>{a.company}</p>}
                           <p>{a.line1}</p>
                           {a.deliveryArea && <p>Area: {a.deliveryArea}</p>}
                           <p>
@@ -1132,7 +1337,11 @@ function AccountContent() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="text-xs text-muted-foreground">
-                    {stat.detail}
+                    {rewardsLoading ? (
+                      <Skeleton className="h-3 w-36" />
+                    ) : (
+                      stat.detail
+                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -1324,18 +1533,22 @@ function StatCard({
   value,
   Icon,
   tone,
+  loading = false,
 }: {
   label: string;
   value: number;
   Icon: typeof Package;
   tone: string;
+  loading?: boolean;
 }) {
   return (
     <Card>
       <CardContent className="flex items-center justify-between p-5">
         <div>
           <p className="text-xs text-gray-600">{label}</p>
-          <p className="mt-1 text-2xl font-semibold">{value}</p>
+          <div className="mt-1 text-2xl font-semibold">
+            {loading ? <Skeleton className="h-7 w-12" /> : value}
+          </div>
         </div>
         <div
           className={`flex h-10 w-10 items-center justify-center rounded-full ${tone}`}
@@ -1624,29 +1837,43 @@ function AddressDialog({
   onOpenChange: (o: boolean) => void;
   onSave: (v: z.infer<typeof addressSchema>, id?: string) => void;
 }) {
-  const empty = {
-    label: '',
-    fullName: '',
-    phone: '',
-    line1: '',
-    city: '',
-    region: '',
-    postal: '',
-    country: '',
-    deliveryArea: '',
-  };
-  const [values, setValues] = useState(state.editing ?? empty);
+  const [values, setValues] = useState(() => {
+    if (!state.editing) return emptyAddressForm();
+    const [firstName = '', ...lastName] = state.editing.fullName.split(/\s+/);
+    return {
+      ...state.editing,
+      firstName,
+      lastName: lastName.join(' '),
+    };
+  });
   const [errors, setErrors] = useState<
-    Partial<Record<keyof typeof empty, string>>
+    Partial<Record<keyof ReturnType<typeof emptyAddressForm>, string>>
   >({});
+
+  useEffect(() => {
+    if (!state.open) return;
+    if (!state.editing) {
+      setValues(emptyAddressForm());
+    } else {
+      const [firstName = '', ...lastName] = state.editing.fullName.split(/\s+/);
+      setValues({
+        ...state.editing,
+        firstName,
+        lastName: lastName.join(' '),
+      });
+    }
+    setErrors({});
+  }, [state.open, state.editing]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const parsed = addressSchema.safeParse(values);
     if (!parsed.success) {
-      const fe: Partial<Record<keyof typeof empty, string>> = {};
+      const fe: Partial<
+        Record<keyof ReturnType<typeof emptyAddressForm>, string>
+      > = {};
       for (const i of parsed.error.issues) {
-        const k = i.path[0] as keyof typeof empty;
+        const k = i.path[0] as keyof ReturnType<typeof emptyAddressForm>;
         if (k && !fe[k]) fe[k] = i.message;
       }
       setErrors(fe);
@@ -1668,63 +1895,50 @@ function AddressDialog({
           <DialogTitle>
             {state.editing ? 'Edit address' : 'Add address'}
           </DialogTitle>
-          <DialogDescription>Fill in the delivery details.</DialogDescription>
+          <DialogDescription>
+            Required fields are marked with an asterisk (*).
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
           <Field
-            label="Label"
-            v={values.label}
-            e={errors.label}
-            onChange={(v) => setValues({ ...values, label: v })}
-            placeholder="Home, Office..."
+            label="First name"
+            v={values.firstName}
+            e={errors.firstName}
+            onChange={(v) => setValues({ ...values, firstName: v })}
+            required
           />
           <Field
-            label="Full name"
-            v={values.fullName}
-            e={errors.fullName}
-            onChange={(v) => setValues({ ...values, fullName: v })}
+            label="Last name"
+            v={values.lastName}
+            e={errors.lastName}
+            onChange={(v) => setValues({ ...values, lastName: v })}
+            required
+          />
+          <Field
+            label="Company (optional)"
+            v={values.company}
+            e={errors.company}
+            onChange={(v) => setValues({ ...values, company: v })}
+            className="sm:col-span-2"
+            placeholder="Company name"
           />
           <Field
             label="Phone"
             v={values.phone}
             e={errors.phone}
             onChange={(v) => setValues({ ...values, phone: v })}
+            required
           />
-          <Field
-            label="Country"
-            v={values.country}
-            e={errors.country}
-            onChange={(v) => setValues({ ...values, country: v })}
-          />
-
-          {/* City */}
-          <Field
-            label="City"
-            v={values.city}
-            e={errors.city}
-            onChange={(v) => setValues({ ...values, city: v })}
-          />
-
-          {/* Delivery area */}
           <div className="sm:col-span-2 space-y-1">
-            <Label className="mb-1 block">Delivery area</Label>
-            <Input
-              value={values.deliveryArea}
-              placeholder="e.g. Chuadanga, Jibannagar…"
-              onChange={(e) =>
-                setValues({ ...values, deliveryArea: e.target.value })
-              }
-            />
-            {errors.deliveryArea && (
-              <p className="text-xs text-destructive">{errors.deliveryArea}</p>
-            )}
-          </div>
-
-          <div className="sm:col-span-2">
-            <Label className="mb-1 block">Street address</Label>
+            <Label htmlFor="address-line1" className="mb-1 block">
+              Address <span className="text-destructive">*</span>
+            </Label>
             <Textarea
+              id="address-line1"
               value={values.line1}
               onChange={(e) => setValues({ ...values, line1: e.target.value })}
+              placeholder="House number and street name"
+              required
               rows={2}
             />
             {errors.line1 && (
@@ -1732,16 +1946,48 @@ function AddressDialog({
             )}
           </div>
           <Field
-            label="State/Region"
-            v={values.region}
-            e={errors.region}
-            onChange={(v) => setValues({ ...values, region: v })}
+            label="City"
+            v={values.city}
+            e={errors.city}
+            onChange={(v) => setValues({ ...values, city: v })}
+            required
+            placeholder="Enter your city name"
           />
           <Field
-            label="Postal code"
+            label="Postcode"
             v={values.postal}
             e={errors.postal}
             onChange={(v) => setValues({ ...values, postal: v })}
+            required
+          />
+          <Field
+            label="Country"
+            v={values.country}
+            e={errors.country}
+            onChange={(v) => setValues({ ...values, country: v })}
+            required
+            placeholder="Country"
+          />
+          <Field
+            label="Region / State"
+            v={values.region}
+            e={errors.region}
+            onChange={(v) => setValues({ ...values, region: v })}
+            required
+          />
+          <Field
+            label="Address label (optional)"
+            v={values.label}
+            e={errors.label}
+            onChange={(v) => setValues({ ...values, label: v })}
+            placeholder="Home, Office..."
+          />
+          <Field
+            label="Delivery area (optional)"
+            v={values.deliveryArea}
+            e={errors.deliveryArea}
+            onChange={(v) => setValues({ ...values, deliveryArea: v })}
+            placeholder="e.g. Chuadanga, Jibannagar..."
           />
           <DialogFooter className="sm:col-span-2">
             <Button
@@ -2013,20 +2259,30 @@ function Field({
   e,
   onChange,
   placeholder,
+  required = false,
+  className,
 }: {
   label: string;
   v: string;
   e?: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  required?: boolean;
+  className?: string;
 }) {
+  const inputId = label.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   return (
-    <div className="space-y-1">
-      <Label>{label}</Label>
+    <div className={`space-y-1 ${className || ''}`}>
+      <Label htmlFor={inputId}>
+        {label}
+        {required && <span className="text-destructive"> *</span>}
+      </Label>
       <Input
+        id={inputId}
         value={v}
         onChange={(ev) => onChange(ev.target.value)}
         placeholder={placeholder}
+        required={required}
       />
       {e && <p className="text-xs text-destructive">{e}</p>}
     </div>

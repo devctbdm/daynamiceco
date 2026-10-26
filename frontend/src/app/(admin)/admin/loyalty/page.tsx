@@ -93,7 +93,16 @@ function messageFrom(error: unknown, fallback: string) {
 }
 
 function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleDateString() : '—';
+  return value
+    ? new Intl.DateTimeFormat('en-US', {
+        dateStyle: 'medium',
+        timeZone: 'Asia/Dhaka',
+      }).format(new Date(value))
+    : '—';
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat('en-US').format(value);
 }
 
 export default function LoyaltyAdminPage() {
@@ -319,7 +328,7 @@ export default function LoyaltyAdminPage() {
                 <Skeleton className="h-8 w-24" />
               ) : (
                 <p className="text-2xl font-semibold">
-                  {(value ?? 0).toLocaleString()}
+                  {formatNumber(value ?? 0)}
                 </p>
               )}
             </CardContent>
@@ -433,7 +442,7 @@ export default function LoyaltyAdminPage() {
           <CardHeader>
             <CardTitle>Customer points</CardTitle>
             <CardDescription>
-              {customerTotal.toLocaleString()} customer accounts
+              {formatNumber(customerTotal)} customer accounts
             </CardDescription>
             <div className="relative pt-2">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -487,7 +496,7 @@ export default function LoyaltyAdminPage() {
                           </span>
                         </TableCell>
                         <TableCell className="text-right font-semibold">
-                          {customer.loyaltyBalance.toLocaleString()}
+                          {formatNumber(customer.loyaltyBalance)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -553,19 +562,19 @@ export default function LoyaltyAdminPage() {
                   <div className="rounded-lg bg-muted p-3">
                     Available{' '}
                     <strong className="block text-lg">
-                      {customerRewards.balance.toLocaleString()}
+                      {formatNumber(customerRewards.balance)}
                     </strong>
                   </div>
                   <div className="rounded-lg bg-muted p-3">
                     Pending{' '}
                     <strong className="block text-lg">
-                      {customerRewards.pendingPoints.toLocaleString()}
+                      {formatNumber(customerRewards.pendingPoints)}
                     </strong>
                   </div>
                   <div className="rounded-lg bg-muted p-3">
                     Expiring soon{' '}
                     <strong className="block text-lg">
-                      {customerRewards.expiringPoints.toLocaleString()}
+                      {formatNumber(customerRewards.expiringPoints)}
                     </strong>
                   </div>
                   <div className="rounded-lg bg-muted p-3">
@@ -621,7 +630,7 @@ export default function LoyaltyAdminPage() {
                         </div>
                         <Badge variant="secondary">
                           {transaction.points > 0 ? '+' : ''}
-                          {transaction.points.toLocaleString()}
+                          {formatNumber(transaction.points)}
                         </Badge>
                       </div>
                     ))}

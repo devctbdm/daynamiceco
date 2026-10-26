@@ -17,10 +17,11 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useAppStore, useAuth } from '@/store';
+import { useAuth } from '@/store';
 import { TwoFactorStep } from '@/components/TwoFactorStep';
 import type { LoginResponse } from '@/lib/api';
 import { apiFetch } from '@/lib/http';
+import type { User } from '@/types/user';
 
 const ADMIN_ROLES = ['super_admin', 'admin', 'manager'];
 
@@ -43,7 +44,8 @@ const initialValues: FormValues = { email: '', password: '' };
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const { user, isLoading, isAuthenticated, fetchUser } = useAuth();
+  const { user, isLoading, isAuthenticated, fetchUser, setAuthenticatedUser } =
+    useAuth();
   const [values, setValues] = useState<FormValues>(initialValues);
   const [errors, setErrors] = useState<
     Partial<Record<keyof FormValues, string>>
@@ -135,19 +137,10 @@ export default function AdminLoginPage() {
         document.cookie = `token=${data.token}; path=/; max-age=${3 * 60 * 60}; SameSite=Lax`;
       }
 
-      await fetchUser().catch(() => {});
-
-      // Fallback: if /auth/me failed, still populate the store from the login response
-      if (!useAppStore.getState().user && data.user) {
-        useAppStore.setState({
-          user: data.user,
-          isAuthenticated: true,
-          isLoading: false,
-        });
-      }
+      setAuthenticatedUser(data.user as User);
 
       toast.success(`Welcome back, ${data.user?.name || 'Admin'}!`);
-      router.push('/admin/dashboard');
+      router.replace('/admin/dashboard');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -155,18 +148,14 @@ export default function AdminLoginPage() {
     }
   };
 
-  const handleTwoFactorSuccess = (token: string, user: any) => {
+  const handleTwoFactorSuccess = (token: string, user: User) => {
     if (token) {
       localStorage.setItem('mobile_token', token);
       document.cookie = `token=${token}; path=/; max-age=${3 * 60 * 60}; SameSite=Lax`;
     }
-    useAppStore.setState({
-      user,
-      isAuthenticated: true,
-      isLoading: false,
-    });
+    setAuthenticatedUser(user);
     toast.success(`Welcome back, ${user?.name || 'Admin'}!`);
-    router.push('/admin/dashboard');
+    router.replace('/admin/dashboard');
   };
 
   return (

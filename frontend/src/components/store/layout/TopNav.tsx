@@ -12,19 +12,13 @@ import { useState, useEffect } from 'react';
 import Logo from '@/components/store/logo/Logo';
 
 const TopNav = () => {
-  const { user, isAuthenticated, logout, fetchUser } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const isLoggedIn = isAuthenticated && !!user;
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { toggleCartDrawer } = useUI();
 
   const { totalItems } = useCart();
-
-  useEffect(() => {
-    // Validate session on mount; if token exists but is expired/invalid,
-    // fetchUser will clear auth state via /auth/me
-    fetchUser();
-  }, [fetchUser]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);

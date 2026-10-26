@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -85,7 +86,7 @@ import {
 
 type StatusFilter = OrderStatus | 'all';
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 6;
 
 const shortId = (id: string) => `#${id.slice(-8).toUpperCase()}`;
 const orderNo = (o: Order) => o.orderNumber || shortId(o._id);
@@ -100,7 +101,6 @@ export default function OrdersPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<{
     total: number;
@@ -111,6 +111,7 @@ export default function OrdersPage() {
     delivered: number;
     cancelled: number;
   } | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -118,6 +119,7 @@ export default function OrdersPage() {
   const [viewOrder, setViewOrder] = useState<Order | null>(null);
   const [editOrder, setEditOrder] = useState<Order | null>(null);
   const [editStatus, setEditStatus] = useState<OrderStatus>('processing');
+  const [savingStatus, setSavingStatus] = useState(false);
   const [cancelOrder, setCancelOrder] = useState<Order | null>(null);
   const [advanceAmountDraft, setAdvanceAmountDraft] = useState('');
   const [advancePaidDraft, setAdvancePaidDraft] = useState('');
@@ -141,7 +143,6 @@ export default function OrdersPage() {
       if (data.success) {
         setOrders(data.orders);
         setTotal(data.total);
-        setTotalPages(data.pages);
       }
     } catch {
       toast.error('Failed to load orders');
@@ -201,6 +202,8 @@ export default function OrdersPage() {
       if (data.success) setStats(data.stats);
     } catch {
       // stats are best-effort
+    } finally {
+      setStatsLoading(false);
     }
   }, []);
 
@@ -212,11 +215,17 @@ export default function OrdersPage() {
     fetchStats();
   }, [fetchStats]);
 
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
+  const pageOrders =
+    orders.length > PAGE_SIZE
+      ? orders.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+      : orders;
 
   const handleSaveStatus = async () => {
-    if (!editOrder) return;
+    if (!editOrder || savingStatus) return;
     try {
+      setSavingStatus(true);
       await orderApi.updateStatus(editOrder._id, editStatus);
       toast.success(
         `Order ${orderNo(editOrder)} status updated to ${editStatus}`
@@ -226,6 +235,8 @@ export default function OrdersPage() {
       fetchStats();
     } catch {
       toast.error('Failed to update order status');
+    } finally {
+      setSavingStatus(false);
     }
   };
 
@@ -463,11 +474,23 @@ export default function OrdersPage() {
           {statCards.map((s) => (
             <Card key={s.label}>
               <CardContent className="flex items-center justify-between p-4">
-                <div>
-                  <p className="text-xs text-muted-foreground">{s.label}</p>
-                  <p className="text-2xl font-bold">{s.value}</p>
-                </div>
-                <s.icon className={`h-8 w-8 ${s.color}`} />
+                {statsLoading ? (
+                  <>
+                    <div className="space-y-2">
+                      <Skeleton className="h-3 w-20" />
+                      <Skeleton className="h-8 w-12" />
+                    </div>
+                    <Skeleton className="h-8 w-8 rounded-md" />
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <p className="text-xs text-muted-foreground">{s.label}</p>
+                      <p className="text-2xl font-bold">{s.value}</p>
+                    </div>
+                    <s.icon className={`h-8 w-8 ${s.color}`} />
+                  </>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -535,25 +558,47 @@ export default function OrdersPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={8}
-                      className="h-24 text-center text-muted-foreground"
-                    >
-                      Loading...
+                Array.from({ length: PAGE_SIZE }, (_, index) => (
+                  <TableRow key={`skeleton-${index}`} aria-hidden="true">
+                    <TableCell>
+                      <Skeleton className="h-4 w-20" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="mb-2 h-4 w-28" />
+                      <Skeleton className="h-3 w-36" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-24" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-16" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="mb-2 h-5 w-20 rounded-full" />
+                      <Skeleton className="h-3 w-16" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-16" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-5 w-20 rounded-full" />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Skeleton className="ml-auto h-8 w-8" />
                     </TableCell>
                   </TableRow>
-                ) : orders.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={8}
-                      className="h-24 text-center text-muted-foreground"
-                    >
-                      No orders found.
-                    </TableCell>
-                  </TableRow>
+                ))
+              ) : pageOrders.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={8}
+                    className="h-24 text-center text-muted-foreground"
+                  >
+                    No orders found.
+                  </TableCell>
+                </TableRow>
               ) : (
-                orders.map((order) => {
+                pageOrders.map((order) => {
                   const cust = getCustomer(order);
                   return (
                     <TableRow key={order._id}>
@@ -648,10 +693,10 @@ export default function OrdersPage() {
         <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
             Showing{' '}
-            {orders.length === 0
+            {pageOrders.length === 0
               ? 0
               : (currentPage - 1) * PAGE_SIZE + 1}
-            –{(currentPage - 1) * PAGE_SIZE + orders.length} of {total}
+            –{(currentPage - 1) * PAGE_SIZE + pageOrders.length} of {total}
           </p>
           {totalPages > 1 && (
             <Pagination className="mx-0 w-auto justify-end">
@@ -914,7 +959,7 @@ export default function OrdersPage() {
         {/* Edit status dialog */}
         <Dialog
           open={!!editOrder}
-          onOpenChange={(o) => !o && setEditOrder(null)}
+          onOpenChange={(o) => !o && !savingStatus && setEditOrder(null)}
         >
           <DialogContent className="max-w-sm">
             <DialogHeader>
@@ -925,6 +970,7 @@ export default function OrdersPage() {
             </DialogHeader>
             <div className="py-2">
               <Select
+                disabled={savingStatus}
                 value={editStatus}
                 onValueChange={(v) => setEditStatus(v as OrderStatus)}
               >
@@ -941,11 +987,20 @@ export default function OrdersPage() {
                 </SelectContent>
               </Select>
             </div>
-            <DialogFooter className="mt-3 flex-col gap-2 sm:flex-row sm:justify-end">
-              <Button variant="outline" onClick={() => setEditOrder(null)}>
+            <DialogFooter className="mt-3 flex-col items-start gap-2 sm:flex-row sm:justify-start">
+              <Button disabled={savingStatus} onClick={handleSaveStatus}>
+                {savingStatus && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                {savingStatus ? 'Saving status...' : 'Save status'}
+              </Button>
+              <Button
+                variant="outline"
+                disabled={savingStatus}
+                onClick={() => setEditOrder(null)}
+              >
                 Cancel
               </Button>
-              <Button onClick={handleSaveStatus}>Save status</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

@@ -1,4 +1,5 @@
 import { apiFetch } from './http';
+import type { FooterConfig } from './footerConfig';
 
 export type AuditLog = {
   _id: string;
@@ -640,6 +641,7 @@ export type StoreSettings = {
   address: string;
   metaTitle?: string;
   metaDescription?: string;
+  footerConfig: FooterConfig;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -767,6 +769,7 @@ export type SavedAddress = {
   label: string;
   fullName: string;
   phone: string;
+  company?: string;
   street: string;
   city: string;
   state: string;
@@ -2013,6 +2016,32 @@ export const notificationApi = {
     apiFetch<{ success: boolean; message: string }>('/notifications/read-all', {
       method: 'POST',
     }),
+
+  customerList: (params?: {
+    page?: number;
+    limit?: number;
+    read?: boolean;
+  }) =>
+    apiFetch<{
+      success: boolean;
+      notifications: AdminNotification[];
+      total: number;
+      unreadCount: number;
+      page: number;
+      pages: number;
+    }>('/notifications/customer', { params }),
+
+  customerMarkRead: (id: string) =>
+    apiFetch<{ success: boolean; notification: AdminNotification }>(
+      `/notifications/customer/${id}/read`,
+      { method: 'PATCH' }
+    ),
+
+  customerMarkAllRead: () =>
+    apiFetch<{ success: boolean; message: string }>(
+      '/notifications/customer/read-all',
+      { method: 'POST' }
+    ),
 };
 
 // ─── Staff & Access Management ────────────────────────────────────────────────

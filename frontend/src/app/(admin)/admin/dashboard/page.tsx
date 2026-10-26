@@ -559,11 +559,12 @@ function CategoryDonutCard({
 // --- Main Page Component ---
 
 export default function AdminDashboardPage() {
-  const [loading, setLoading] = useState(() => !dashboardStatsResource.peek());
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [stats, setStats] = useState<DashboardStats | null>(() => dashboardStatsResource.peek() ?? null);
-  const [updatedAt, setUpdatedAt] = useState<number | null>(() => (dashboardStatsResource.peek() ? Date.now() : null));
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [storeName, setStoreName] = useState<string | null>(null);
+  const [currentDate, setCurrentDate] = useState<string | null>(null);
 
   const [open, setOpen] = useState(false);
   const [viewOrder, setViewOrder] = useState<Order | null>(null);
@@ -586,6 +587,10 @@ export default function AdminDashboardPage() {
       setLoading(false);
     }
   }, [stats]);
+
+  useEffect(() => {
+    setCurrentDate(todayLabel());
+  }, []);
 
   useEffect(() => {
     if (stats) {
@@ -701,8 +706,10 @@ export default function AdminDashboardPage() {
               Dashboard
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              {todayLabel()} · Welcome back
-              {storeName ? ` — here's how ${storeName} is doing.` : ", here's what's happening with your store."}
+              {currentDate ?? 'Today'} · Welcome back
+              {storeName
+                ? ` — here's how ${storeName} is doing.`
+                : ", here's what's happening with your store."}
             </p>
           </div>
           <div className="flex items-center gap-3">

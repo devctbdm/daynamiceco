@@ -31,13 +31,20 @@ test("notification schema preserves all fields and indexes history/read state", 
       "link",
       "read",
       "order_id",
+      "user_id",
       "created_at",
       "updated_at",
     ],
   );
   assert.deepEqual(
     table.indexes.map((index) => index.config.name),
-    ["notification_entries_created_at_idx", "notification_entries_read_idx"],
+    [
+      "notification_entries_created_at_idx",
+      "notification_entries_read_idx",
+      "notification_entries_read_updated_at_idx",
+      "notification_entries_unread_created_at_idx",
+      "notification_entries_user_created_at_idx",
+    ],
   );
   assert.equal(table.checks.length, 3);
 });

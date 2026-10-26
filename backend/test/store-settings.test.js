@@ -29,6 +29,7 @@ test("store settings use a normalized singleton table with logo type constraint"
       "address",
       "meta_title",
       "meta_description",
+      "footer_config",
       "created_at",
       "updated_at",
     ],
@@ -96,6 +97,7 @@ test("public store settings return only the legacy public fields", async () => {
     address: "Dhaka",
     metaTitle: "Apple IT Zone",
     metaDescription: "Store meta description",
+    footerConfig: { enabled: true },
     createdAt: new Date(),
   });
 
@@ -115,6 +117,7 @@ test("public store settings return only the legacy public fields", async () => {
     address: "Dhaka",
     metaTitle: "Apple IT Zone",
     metaDescription: "Store meta description",
+    footerConfig: { enabled: true },
   });
 });
 
@@ -168,4 +171,125 @@ test("store setting updates reject non-string values before database access", as
     assert.equal(error.getResponse().message, "storeName must be a string");
     return true;
   });
+});
+
+test("store setting updates validate and persist footer configuration", async () => {
+  let inserted;
+  const database = {
+    insert() {
+      return {
+        values(value) {
+          inserted = value;
+          return this;
+        },
+        onConflictDoUpdate() {
+          return this;
+        },
+        returning: async () => [
+          { id: "default", footerConfig: inserted.footerConfig },
+        ],
+      };
+    },
+  };
+  const footerConfig = {
+    enabled: true,
+    support: {
+      enabled: true,
+      title: "Support",
+      hours: "9-5",
+      phone: "",
+      locationTitle: "Find us",
+      location: "Dhaka",
+    },
+    about: { enabled: true, title: "About", links: [] },
+    contact: {
+      enabled: true,
+      title: "Contact",
+      addressLabel: "Address",
+      phoneLabel: "Phone",
+      emailLabel: "Email",
+    },
+    apps: {
+      enabled: true,
+      title: "Get the app",
+      googlePlayLabel: "Google Play",
+      googlePlayUrl: "https://play.google.com/store/apps/details?id=example",
+      appStoreLabel: "App Store",
+      appStoreUrl: "",
+    },
+    social: { enabled: true, links: [] },
+    copyright: {
+      text: "",
+      poweredBy: true,
+      poweredByLabel: "Powered by",
+      poweredByText: "Apple IT Zone",
+    },
+  };
+  const result = await new StoreSettingsService(database).updateSettings({
+    footerConfig,
+  });
+  assert.deepEqual(inserted.footerConfig, footerConfig);
+  assert.deepEqual(result.footerConfig, footerConfig);
+});
+
+test("store setting updates reject unsafe footer destinations", async () => {
+  const service = new StoreSettingsService({
+    insert() {
+      assert.fail("Invalid footer destinations must not be persisted");
+    },
+  });
+  await assert.rejects(
+    service.updateSettings({
+      footerConfig: {
+        enabled: true,
+        support: {
+          enabled: true,
+          title: "Support",
+          hours: "",
+          phone: "",
+          locationTitle: "",
+          location: "",
+        },
+        about: {
+          enabled: true,
+          title: "About",
+          links: [
+            {
+              id: "bad",
+              label: "Bad link",
+              url: "javascript:alert(1)",
+              enabled: true,
+            },
+          ],
+        },
+        contact: {
+          enabled: true,
+          title: "Contact",
+          addressLabel: "Address",
+          phoneLabel: "Phone",
+          emailLabel: "Email",
+        },
+        apps: {
+          enabled: true,
+          title: "Apps",
+          googlePlayLabel: "Google Play",
+          googlePlayUrl: "",
+          appStoreLabel: "App Store",
+          appStoreUrl: "",
+        },
+        social: { enabled: true, links: [] },
+        copyright: {
+          text: "",
+          poweredBy: true,
+          poweredByLabel: "Powered by",
+          poweredByText: "",
+        },
+      },
+    }),
+    (error) => {
+      assert.equal(error.getStatus(), 400);
+      assert.equal(error.getResponse().message, "footerConfig is invalid");
+      return true;
+    },
+  );
 });

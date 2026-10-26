@@ -3,6 +3,7 @@ import { DATABASE } from "../db/database.js";
 import {
   countUnreadNotifications,
   listNotificationEntries,
+  listCustomerNotificationEntries,
   markAllNotificationsRead,
   markNotificationRead,
 } from "./notifications.repository.js";
@@ -36,6 +37,43 @@ class NotificationsService {
       success: true,
       unreadCount: await countUnreadNotifications(this.database),
     };
+  }
+
+  async getCustomerNotifications(userId, query = {}) {
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(query.limit) || 20));
+    const read =
+      query.read === "true" ? true : query.read === "false" ? false : undefined;
+    const { notifications, total, unreadCount } =
+      await listCustomerNotificationEntries(
+        userId,
+        { page, limit, read },
+        this.database,
+      );
+    return {
+      success: true,
+      notifications,
+      total,
+      unreadCount,
+      page,
+      pages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
+  async markCustomerRead(id, userId) {
+    const notification = await markNotificationRead(id, this.database, userId);
+    if (!notification) {
+      throw new NotFoundException({
+        success: false,
+        message: "Notification not found",
+      });
+    }
+    return { success: true, notification };
+  }
+
+  async markAllCustomerRead(userId) {
+    await markAllNotificationsRead(this.database, userId);
+    return { success: true, message: "All notifications marked as read" };
   }
 
   async markRead(id) {

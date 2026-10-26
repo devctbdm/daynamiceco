@@ -6,9 +6,13 @@ import { findUserById } from "./users/users.repository.js";
 const ADMIN_ROLES = ["admin", "super_admin", "manager"];
 
 let io = null;
+let notificationRefreshTimer = null;
+let pendingNotificationPayload = null;
 
-// Attach Socket.io to the existing HTTP server. Only admin/manager accounts
-// are allowed to join the "admin" room where real-time notifications are sent.
+const NOTIFICATION_REFRESH_INTERVAL_MS = 1000;
+
+// Attach Socket.io and place authenticated admins and customers in separate
+// rooms so notification events can only reach their intended audience.
 export function initSocket(server) {
   io = new Server(server, {
     cors: {
@@ -30,7 +34,10 @@ export function initSocket(server) {
         ]);
 
         const account = user || member;
-        if (
+        if (!member && account?.role === "customer") {
+          socket.join(`customer:${decoded.id}`);
+          joined = true;
+        } else if (
           account &&
           (!member || member.active) &&
           ADMIN_ROLES.includes(account.role)
@@ -64,4 +71,28 @@ export function getIO() {
 // Emit an event to everyone in the admin room (all connected admin dashboards).
 export function emitToAdmins(event, payload) {
   getIO().to("admin").emit(event, payload);
+}
+
+export function emitToCustomer(userId, event, payload) {
+  getIO().to(`customer:${userId}`).emit(event, payload);
+}
+
+// Notification records are durable, so socket events only need to signal that
+// the admin list should refresh; coalesce bursts rather than broadcasting each
+// database insert to every connected admin.
+export function queueAdminNotificationRefresh(payload) {
+  pendingNotificationPayload = payload;
+  if (notificationRefreshTimer) return;
+
+  notificationRefreshTimer = setTimeout(() => {
+    const latestPayload = pendingNotificationPayload;
+    notificationRefreshTimer = null;
+    pendingNotificationPayload = null;
+    try {
+      emitToAdmins("notification:new", latestPayload);
+    } catch (error) {
+      console.error("Failed to emit notification refresh:", error.message);
+    }
+  }, NOTIFICATION_REFRESH_INTERVAL_MS);
+  notificationRefreshTimer.unref?.();
 }

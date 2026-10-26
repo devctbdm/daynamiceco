@@ -75,8 +75,13 @@ async function proxyRequest(request: NextRequest, params: { path: string[] }) {
     // signal: AbortSignal.timeout(10000),
   });
 
-  // 🔁 Return the response as-is
+  // Forward the response body with headers valid for the decoded fetch body.
   const responseHeaders = new Headers(response.headers);
+  // fetch() transparently decompresses upstream responses. Do not forward the
+  // upstream encoding/length metadata for the now-decoded response body.
+  responseHeaders.delete('content-encoding');
+  responseHeaders.delete('content-length');
+  responseHeaders.delete('transfer-encoding');
   // Remove CORS headers from backend (your domain already handles this)
   responseHeaders.delete('access-control-allow-origin');
   responseHeaders.delete('access-control-allow-credentials');

@@ -168,14 +168,20 @@ export default function NotificationsPage() {
     loadOrderCount();
 
     const socket = getSocket();
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const onNew = () => {
-      loadPageRef.current();
-      loadOrderCountRef.current?.();
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        refreshTimer = undefined;
+        loadPageRef.current();
+        loadOrderCountRef.current?.();
+      }, 300);
     };
     socket.on('notification:new', onNew);
 
     return () => {
       socket.off('notification:new', onNew);
+      if (refreshTimer) clearTimeout(refreshTimer);
     };
   }, []);
 

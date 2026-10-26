@@ -12,6 +12,7 @@ export interface AuthSlice {
   register: (credentials: RegisterCredentials) => Promise<void>;
   logout: () => Promise<void>;
   fetchUser: () => Promise<void>;
+  setAuthenticatedUser: (user: User) => void;
   /** Restore the admin user from the session snapshot (instant refresh). */
   hydrateUserFromSession: () => boolean;
 }
@@ -61,103 +62,128 @@ export function readAdminUserSnapshot(): User | null {
   }
 }
 
-export const createAuthSlice: StateCreator<AuthSlice> = (set) => ({
-  user: null,
-  isLoading: true,
-  isAuthenticated: false,
+export const createAuthSlice: StateCreator<AuthSlice> = (set, get) => {
+  let sessionRevision = 0;
 
-  login: async (credentials: LoginCredentials) => {
-    set({ isLoading: true });
-    try {
-      const response = await apiFetch('/auth/login', {
-        method: 'POST',
-        body: credentials,
-      });
-      if (response.data.success) {
-        const user = response.data.user as User;
-        // Refresh the shared session cache so other callers see the new user.
-        meResource.set({ user });
-        cacheAdminUser(user);
+  return {
+    user: null,
+    isLoading: true,
+    isAuthenticated: false,
+
+    login: async (credentials: LoginCredentials) => {
+      set({ isLoading: true });
+      try {
+        const response = await apiFetch('/auth/login', {
+          method: 'POST',
+          body: credentials,
+        });
+        if (response.data.success) {
+          sessionRevision += 1;
+          const user = response.data.user as User;
+          // Refresh the shared session cache so other callers see the new user.
+          meResource.set({ user });
+          cacheAdminUser(user);
+          set({
+            user,
+            isAuthenticated: true,
+            isLoading: false,
+          });
+        }
+      } catch (error: any) {
+        set({ isLoading: false });
+        throw new Error(error.response?.data?.message || 'Login failed');
+      }
+    },
+
+    register: async (credentials: RegisterCredentials) => {
+      set({ isLoading: true });
+      try {
+        const response = await apiFetch('/auth/register', {
+          method: 'POST',
+          body: credentials,
+        });
+        if (response.data.success) {
+          sessionRevision += 1;
+          const user = response.data.user as User;
+          meResource.set({ user });
+          cacheAdminUser(user);
+          set({
+            user,
+            isAuthenticated: true,
+            isLoading: false,
+          });
+        }
+      } catch (error: any) {
+        set({ isLoading: false });
+        throw new Error(error.response?.data?.message || 'Registration failed');
+      }
+    },
+
+    logout: async () => {
+      sessionRevision += 1;
+      try {
+        await apiFetch('/auth/logout', { method: 'POST' });
+      } finally {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('mobile_token');
+          document.cookie = 'token=; path=/; max-age=0; SameSite=Lax';
+        }
+        meResource.set({ user: null });
+        cacheAdminUser(null);
         set({
-          user,
-          isAuthenticated: true,
+          user: null,
+          isAuthenticated: false,
           isLoading: false,
         });
       }
-    } catch (error: any) {
-      set({ isLoading: false });
-      throw new Error(error.response?.data?.message || 'Login failed');
-    }
-  },
+    },
 
-  register: async (credentials: RegisterCredentials) => {
-    set({ isLoading: true });
-    try {
-      const response = await apiFetch('/auth/register', {
-        method: 'POST',
-        body: credentials,
-      });
-      if (response.data.success) {
-        const user = response.data.user as User;
-        meResource.set({ user });
+    /**
+     * Resolve the current session user. Backed by the shared `meResource`, so
+     * multiple callers on the same page load (ClientLayout, RequireAuth, ...)
+     * produce a single `/auth/me` request.
+     */
+    fetchUser: async () => {
+      const requestRevision = sessionRevision;
+      if (!get().user && meResource.peek() === undefined) {
+        set({ isLoading: true });
+      }
+      try {
+        const { user } = await meResource.get();
+        if (requestRevision !== sessionRevision) {
+          meResource.set({ user: get().user });
+          return;
+        }
         cacheAdminUser(user);
         set({
           user,
-          isAuthenticated: true,
+          isAuthenticated: !!user,
           isLoading: false,
         });
+      } catch {
+        if (requestRevision !== sessionRevision) {
+          meResource.set({ user: get().user });
+          return;
+        }
+        cacheAdminUser(null);
+        set({ user: null, isAuthenticated: false, isLoading: false });
       }
-    } catch (error: any) {
-      set({ isLoading: false });
-      throw new Error(error.response?.data?.message || 'Registration failed');
-    }
-  },
+    },
 
-  logout: async () => {
-    try {
-      await apiFetch('/auth/logout', { method: 'POST' });
-    } finally {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('mobile_token');
-        document.cookie = 'token=; path=/; max-age=0; SameSite=Lax';
-      }
-      meResource.set({ user: null });
-      cacheAdminUser(null);
-      set({
-        user: null,
-        isAuthenticated: false,
-        isLoading: false,
-      });
-    }
-  },
-
-  /**
-   * Resolve the current session user. Backed by the shared `meResource`, so
-   * multiple callers on the same page load (ClientLayout, RequireAuth, ...)
-   * produce a single `/auth/me` request.
-   */
-  fetchUser: async () => {
-    set({ isLoading: true });
-    try {
-      const { user } = await meResource.get();
+    setAuthenticatedUser: (user) => {
+      sessionRevision += 1;
+      meResource.set({ user });
       cacheAdminUser(user);
-      set({
-        user,
-        isAuthenticated: !!user,
-        isLoading: false,
-      });
-    } catch {
-      cacheAdminUser(null);
-      set({ user: null, isAuthenticated: false, isLoading: false });
-    }
-  },
-
-  hydrateUserFromSession: () => {
-    const user = readAdminUserSnapshot();
-    if (user) {
       set({ user, isAuthenticated: true, isLoading: false });
-      return true;
-    }
-    return false;
-  },
-});
+    },
+
+    hydrateUserFromSession: () => {
+      const user = readAdminUserSnapshot();
+      if (user) {
+        set({ user, isAuthenticated: true, isLoading: false });
+        return true;
+      }
+      return false;
+    },
+  };
+};

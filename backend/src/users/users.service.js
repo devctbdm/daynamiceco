@@ -258,25 +258,9 @@ class UsersService {
   async getMe(request) {
     if (request.isTeam)
       return { success: true, user: publicUser(request.user, true) };
-    const user = await findUserById(request.user._id, {
-      database: this.database,
-    });
-    if (!user)
-      throw new NotFoundException({
-        success: false,
-        message: "User not found",
-      });
     return {
       success: true,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        phone: user.phone,
-        address: user.address,
-        isTeam: false,
-      },
+      user: publicUser(request.user),
     };
   }
 
@@ -425,6 +409,7 @@ class UsersService {
       label: input.label || "Home",
       fullName: input.fullName || user.name,
       phone: input.phone || user.phone,
+      company: input.company || "",
       street: input.street || "",
       city: input.city || "",
       state: input.state || "",
@@ -450,6 +435,7 @@ class UsersService {
       "label",
       "fullName",
       "phone",
+      "company",
       "street",
       "city",
       "state",

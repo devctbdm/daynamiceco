@@ -5,18 +5,19 @@ import { API_ROOT } from './apiConfig';
 const SOCKET_URL = API_ROOT;
 
 let socket: Socket | null = null;
+let socketToken: string | null = null;
 
-// Returns a singleton Socket.io client. The admin auth token is sent in the
-// handshake so the server only admits admin/manager connections into the
-// "admin" room that receives real-time notifications.
+// Reuse the socket only while the authenticated browser token remains the same.
 export function getSocket(): Socket {
   if (typeof window === 'undefined') {
     throw new Error('Socket is only available in the browser');
   }
-  if (!socket) {
-    const token = localStorage.getItem('mobile_token') || undefined;
+  const token = localStorage.getItem('mobile_token');
+  if (!socket || token !== socketToken) {
+    socket?.disconnect();
+    socketToken = token;
     socket = io(SOCKET_URL, {
-      auth: { token },
+      auth: { token: token || undefined },
       transports: ['websocket', 'polling'],
       autoConnect: true,
     });
@@ -28,5 +29,6 @@ export function closeSocket() {
   if (socket) {
     socket.disconnect();
     socket = null;
+    socketToken = null;
   }
 }

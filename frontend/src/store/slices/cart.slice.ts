@@ -213,7 +213,7 @@ export const createCartSlice: StateCreator<CartSlice> = (set, get) => ({
     if (!isAuthed()) return;
 
     try {
-      await apiFetch('/cart/clear', { method: 'DELETE' });
+      await apiFetch('/cart/clear', { method: 'DELETE', retries: 2 });
     } catch (error) {
       console.error('Failed to clear cart on server:', error);
     }

@@ -33,6 +33,10 @@ export const ADMIN_NAV: AdminNavItem[] = [
     ],
   },
   {
+    title: 'Footer CMS',
+    url: '/admin/footer-cms',
+  },
+  {
     title: 'Products',
     url: '#',
     items: [
@@ -101,6 +105,10 @@ export const ADMIN_NAV: AdminNavItem[] = [
       { title: 'Reviews', url: '/admin/reviews' },
       { title: 'Questions', url: '/admin/questions' },
     ],
+  },
+  {
+    title: 'Footer cms',
+    url: '/admin/footer-cms',
   },
   {
     title: 'Notifications',

@@ -4,16 +4,15 @@ import { createAuthSlice, AuthSlice } from './slices/auth.slice';
 import { createCartSlice, CartSlice } from './slices/cart.slice';
 import { createUISlice, UISlice } from './slices/ui.slice';
 import { createCheckoutSlice, CheckoutSlice } from './slices/checkout.slice';
-import {
-  createCompareSlice,
-  CompareSlice,
-} from './slices/compare.slice';
-import {
-  createWishlistSlice,
-  WishlistSlice,
-} from './slices/wishlist.slice';
+import { createCompareSlice, CompareSlice } from './slices/compare.slice';
+import { createWishlistSlice, WishlistSlice } from './slices/wishlist.slice';
 
-export type RootStore = AuthSlice & CartSlice & UISlice & CheckoutSlice & CompareSlice & WishlistSlice;
+export type RootStore = AuthSlice &
+  CartSlice &
+  UISlice &
+  CheckoutSlice &
+  CompareSlice &
+  WishlistSlice;
 
 // Create the root store
 export const useAppStore = create<RootStore>()(
@@ -74,6 +73,9 @@ export const useAuth = () => {
   const register = useAppStore((state) => state.register);
   const logout = useAppStore((state) => state.logout);
   const fetchUser = useAppStore((state) => state.fetchUser);
+  const setAuthenticatedUser = useAppStore(
+    (state) => state.setAuthenticatedUser
+  );
   const hydrateUserFromSession = useAppStore(
     (state) => state.hydrateUserFromSession
   );
@@ -85,6 +87,7 @@ export const useAuth = () => {
     register,
     logout,
     fetchUser,
+    setAuthenticatedUser,
     hydrateUserFromSession,
   };
 };

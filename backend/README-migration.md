@@ -59,6 +59,10 @@ The API host now runs on NestJS and can be started with:
 - Public `GET /api/store/public` and admin `GET`/`PUT /api/store` settings use
   NestJS/Drizzle. Email and SMS templates read store contact details from the
   same Neon singleton.
+- The public store settings include the JSONB `footer_config` managed by the
+  admin Footer CMS. Apply migration
+  `drizzle/20261026090600_footer_cms/migration.sql` before deploying the
+  frontend footer editor.
 - Public `GET /api/popup-offer` and admin-only `PUT /api/popup-offer` use
   NestJS/Drizzle, retaining popup validation and scoped Cloudinary image uploads.
 - Product browsing, PC-part filters, SKU/product-code generation, ratings, and

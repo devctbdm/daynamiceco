@@ -32,7 +32,10 @@ import {
   notifyOrderStatusEmail,
 } from "../services/emailService.js";
 import { notifyOrderStatusChange } from "../services/smsService.js";
-import { createNotification } from "../services/notificationService.js";
+import {
+  createCustomerNotification,
+  createNotification,
+} from "../services/notificationService.js";
 import {
   estimateEarnedPoints,
   getEligibleSubtotal,
@@ -152,6 +155,13 @@ class OrdersService {
       title: "New order received",
       description: `Order ${order.orderNumber} placed by ${user.name || "a customer"} for ৳${totalAmount}.`,
       link: `/admin/orders?id=${order._id}`,
+      order: order._id,
+    });
+    await createCustomerNotification({
+      userId: String(user._id ?? user.id),
+      category: "order",
+      title: `Order ${order.orderNumber} received`,
+      description: `We received your order. Its current status is ${formatOrderStatus(order.orderStatus)}.`,
       order: order._id,
     });
     return order;
@@ -287,6 +297,13 @@ class OrdersService {
       title: "New order created by staff",
       description: `Order ${order.orderNumber} created for ${customer.name} by ${actor.name || "admin"} for ৳${totalAmount}.`,
       link: `/admin/orders/${order._id}`,
+      order: order._id,
+    });
+    await createCustomerNotification({
+      userId: String(customer._id),
+      category: "order",
+      title: `Order ${order.orderNumber} received`,
+      description: `Your order was created. Its current status is ${formatOrderStatus(order.orderStatus)}.`,
       order: order._id,
     });
 
@@ -488,6 +505,13 @@ class OrdersService {
         title: `Order ${label}`,
         description: `Order ${updated.orderNumber} status is now ${label}.`,
         link: `/admin/orders?id=${updated._id}`,
+        order: updated._id,
+      });
+      await createCustomerNotification({
+        userId: String(order.user?._id ?? order.user),
+        category: "order",
+        title: `Order ${updated.orderNumber} ${formatOrderStatus(status)}`,
+        description: `Your order status changed from ${formatOrderStatus(previousStatus)} to ${formatOrderStatus(status)}.`,
         order: updated._id,
       });
     }
@@ -892,6 +916,13 @@ function validNonnegative(value, message) {
   const number = Number(value);
   if (!Number.isFinite(number) || number < 0) {
     throw new BadRequestException({ success: false, message });
+  }
+
+  function formatOrderStatus(status) {
+    return String(status || "")
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
   }
   return number;
 }

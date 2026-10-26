@@ -50,6 +50,8 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
   Analytics: <ChartLine />,
   Users: <UsersRound />,
   Reviews: <UserStar />,
+  'footer cms': <LayoutArrowRight />,
+  'Footer CMS': <LayoutArrowRight />,
   Notifications: <BellCheck />,
   Administrator: <ShieldAlert />,
   Settings: <Settings2Icon />,
